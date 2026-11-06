@@ -10,7 +10,11 @@ import {
   ShieldCheck, 
   KeyRound,
   CheckCircle2,
-  X
+  X,
+  Users,
+  ChefHat,
+  BarChart3,
+  Calendar
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -36,19 +40,18 @@ export const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleLoginSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const executeLogin = async (loginEmail: string, loginPass: string) => {
     setLoading(true);
     setError(null);
 
     try {
       const res = await api.post('/auth/login', {
-        email: email.trim(),
-        password,
+        email: loginEmail.trim(),
+        password: loginPass,
       });
 
       const { token, id, name, role, outletId, loyaltyPoints } = res.data;
-      login(token, { id, name, email: email.trim(), role, outletId, loyaltyPoints });
+      login(token, { id, name, email: loginEmail.trim(), role, outletId, loyaltyPoints });
 
       // Role-based redirection
       switch (role) {
@@ -72,6 +75,17 @@ export const LoginPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLoginSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    executeLogin(email, password);
+  };
+
+  const handleRoleSelect = (roleEmail: string) => {
+    setEmail(roleEmail);
+    setPassword('password123');
+    executeLogin(roleEmail, 'password123');
   };
 
   const handleRequestResetToken = async (e: React.FormEvent) => {
@@ -142,6 +156,69 @@ export const LoginPage: React.FC = () => {
           <p className="text-xs text-charcoal-500">
             Direct Food Ordering Platform & Operational Suites
           </p>
+        </div>
+
+        {/* Role Quick Sign-In for All 5 Portals */}
+        <div className="bg-cream-100 p-4 rounded-3xl border border-cream-200 space-y-2.5">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-charcoal-600 block text-center">
+            Role Quick Sign-In (All 5 Roles)
+          </span>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <button
+              type="button"
+              onClick={() => handleRoleSelect('customer@hyderabadhouse.com')}
+              className={`p-2.5 bg-white hover:bg-cream-50 border rounded-xl font-semibold text-charcoal-800 flex items-center space-x-2 shadow-2xs transition-all ${
+                email === 'customer@hyderabadhouse.com' ? 'border-maroon-800 ring-2 ring-maroon-800/20' : 'border-cream-300 hover:border-maroon-800'
+              }`}
+            >
+              <Users className="w-4 h-4 text-blue-600 flex-shrink-0" />
+              <span className="truncate">Customer</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleRoleSelect('kitchen.kondapur@hyderabadhouse.com')}
+              className={`p-2.5 bg-white hover:bg-cream-50 border rounded-xl font-semibold text-charcoal-800 flex items-center space-x-2 shadow-2xs transition-all ${
+                email === 'kitchen.kondapur@hyderabadhouse.com' ? 'border-maroon-800 ring-2 ring-maroon-800/20' : 'border-cream-300 hover:border-maroon-800'
+              }`}
+            >
+              <ChefHat className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <span className="truncate">Kitchen Staff</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleRoleSelect('manager.kondapur@hyderabadhouse.com')}
+              className={`p-2.5 bg-white hover:bg-cream-50 border rounded-xl font-semibold text-charcoal-800 flex items-center space-x-2 shadow-2xs transition-all ${
+                email === 'manager.kondapur@hyderabadhouse.com' ? 'border-maroon-800 ring-2 ring-maroon-800/20' : 'border-cream-300 hover:border-maroon-800'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4 text-purple-600 flex-shrink-0" />
+              <span className="truncate">Outlet Manager</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleRoleSelect('admin@hyderabadhouse.com')}
+              className={`p-2.5 bg-white hover:bg-cream-50 border rounded-xl font-semibold text-charcoal-800 flex items-center space-x-2 shadow-2xs transition-all ${
+                email === 'admin@hyderabadhouse.com' ? 'border-maroon-800 ring-2 ring-maroon-800/20' : 'border-cream-300 hover:border-maroon-800'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4 text-red-600 flex-shrink-0" />
+              <span className="truncate">Central Admin</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleRoleSelect('catering@hyderabadhouse.com')}
+              className={`col-span-2 p-2.5 bg-white hover:bg-cream-50 border rounded-xl font-semibold text-charcoal-800 flex items-center justify-center space-x-2 shadow-2xs transition-all ${
+                email === 'catering@hyderabadhouse.com' ? 'border-maroon-800 ring-2 ring-maroon-800/20' : 'border-cream-300 hover:border-maroon-800'
+              }`}
+            >
+              <Calendar className="w-4 h-4 text-gold-600 flex-shrink-0" />
+              <span>Catering Manager</span>
+            </button>
+          </div>
         </div>
 
         {/* Regular Secure Login Form */}
