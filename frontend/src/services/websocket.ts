@@ -1,3 +1,7 @@
+if (typeof window !== 'undefined' && !(window as any).global) {
+  (window as any).global = window;
+}
+
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 

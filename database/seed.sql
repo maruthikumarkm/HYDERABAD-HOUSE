@@ -88,32 +88,32 @@ INSERT INTO menu_items (id, category_id, name, description, base_price, is_veg, 
 (10, 3, 'Mushroom & Corn Dum Biryani', 'Tender button mushrooms and sweet corn kernels cooked dum style with mint and saffron.', 270.00, TRUE, 'MILD', 'Regular', 'https://images.unsplash.com/photo-1645177628172-a94c1f96e6db?w=800&q=80', 'Contains Dairy', 20, TRUE),
 
 -- Starters
-(11, 4, 'Hyderabadi Chicken 65', 'Iconic deep-fried spiced chicken morsels tossed with curry leaves, green chilies, and yogurt.', 280.00, FALSE, 'SPICY', 'Regular (8-10 pcs)', 'https://images.unsplash.com/photo-1610057099443-fde8c4d50f91?w=800&q=80', 'Contains Dairy', 15, TRUE),
-(12, 4, 'Apollo Fish', 'Famous Andhra-Hyderabadi batter-fried fish fillets tossed in spicy garlic red chili sauce.', 340.00, FALSE, 'SPICY', 'Regular', 'https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=800&q=80', 'Contains Fish', 18, TRUE),
-(13, 4, 'Crispy Corn Salt & Pepper', 'Golden crispy American sweet corn tossed with freshly ground pepper and spring onions.', 220.00, TRUE, 'MILD', 'Regular', 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=800&q=80', 'None', 15, TRUE),
-(14, 4, 'Paneer 65', 'Crisp cottage cheese cubes coated in authentic spicy batter and tempered with mustard seeds.', 260.00, TRUE, 'SPICY', 'Regular', 'https://images.unsplash.com/photo-1610057099443-fde8c4d50f91?w=800&q=80', 'Contains Dairy', 15, TRUE),
+(11, 4, 'Hyderabadi Chicken 65', 'Iconic deep-fried spiced chicken morsels tossed with curry leaves, green chilies, and yogurt.', 280.00, FALSE, 'SPICY', 'Regular (8-10 pcs)', '/images/dishes/chicken_65.jpg', 'Contains Dairy', 15, TRUE),
+(12, 4, 'Apollo Fish', 'Famous Andhra-Hyderabadi batter-fried fish fillets tossed in spicy garlic red chili sauce.', 340.00, FALSE, 'SPICY', 'Regular', '/images/dishes/apollo_fish.jpg', 'Contains Fish', 18, TRUE),
+(13, 4, 'Crispy Corn Salt & Pepper', 'Golden crispy American sweet corn tossed with freshly ground pepper and spring onions.', 220.00, TRUE, 'MILD', 'Regular', '/images/dishes/crispy_corn.jpg', 'None', 15, TRUE),
+(14, 4, 'Paneer 65', 'Crisp cottage cheese cubes coated in authentic spicy batter and tempered with mustard seeds.', 260.00, TRUE, 'SPICY', 'Regular', '/images/dishes/paneer_65.jpg', 'Contains Dairy', 15, TRUE),
 
 -- Kebabs
-(15, 5, 'Tandoori Murgh (Half)', 'Tender chicken marinated in mustard oil, yogurt and Kashmiri spices roasted in clay oven.', 290.00, FALSE, 'MEDIUM', 'Half (4 pcs)', 'https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?w=800&q=80', 'Contains Dairy', 20, TRUE),
-(16, 5, 'Murgh Malai Kebab', 'Melt-in-mouth chicken chunks marinated in cream, cheese, cardamom and grilled over charcoal.', 320.00, FALSE, 'MILD', '6 pieces', 'https://images.unsplash.com/photo-1599488615731-7e5c2823ff28?w=800&q=80', 'Contains Dairy, Nuts', 20, TRUE),
-(17, 5, 'Mutton Sheekh Kebab', 'Minced spiced mutton mixed with herbs, skewered and cooked to juicy perfection.', 390.00, FALSE, 'SPICY', '4 skewers', 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800&q=80', 'None', 20, TRUE),
+(15, 5, 'Tandoori Murgh (Half)', 'Tender chicken marinated in mustard oil, yogurt and Kashmiri spices roasted in clay oven.', 290.00, FALSE, 'MEDIUM', 'Half (4 pcs)', '/images/dishes/tandoori_chicken.jpg', 'Contains Dairy', 20, TRUE),
+(16, 5, 'Murgh Malai Kebab', 'Melt-in-mouth chicken chunks marinated in cream, cheese, cardamom and grilled over charcoal.', 320.00, FALSE, 'MILD', '6 pieces', '/images/dishes/malai_kebab.jpg', 'Contains Dairy, Nuts', 20, TRUE),
+(17, 5, 'Mutton Sheekh Kebab', 'Minced spiced mutton mixed with herbs, skewered and cooked to juicy perfection.', 390.00, FALSE, 'SPICY', '4 skewers', '/images/dishes/sheekh_kebab.jpg', 'None', 20, TRUE),
 (18, 5, 'Tandoori Paneer Tikka', 'Cubes of fresh malai paneer with bell peppers, onions and tandoori masala.', 270.00, TRUE, 'MEDIUM', '6 pieces', 'https://images.unsplash.com/photo-1567188040759-fb8a883dc6d8?w=800&q=80', 'Contains Dairy', 18, TRUE),
 
 -- Haleem
-(19, 6, 'Royal Hyderabadi Mutton Haleem', 'Authentic GI-tagged delicacy made with broken wheat, tender mutton, lentils, and pure ghee topped with fried onions and cashew.', 350.00, FALSE, 'MEDIUM', '350 ml (Serves 1-2)', 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&q=80', 'Contains Gluten, Dairy, Nuts', 15, TRUE),
-(20, 6, 'Special Irani Chicken Haleem', 'Light and flavorful chicken haleem cooked slowly with roasted spices, mint and lime.', 290.00, FALSE, 'MEDIUM', '350 ml (Serves 1-2)', 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&q=80', 'Contains Gluten, Dairy', 15, TRUE),
-(21, 6, 'Hyderabadi Mirchi Ka Salan (Side)', 'Traditional tangy peanut and sesame seed curry with roasted Bhavnagri green chilies.', 160.00, TRUE, 'SPICY', '250 ml', 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=800&q=80', 'Contains Peanuts, Sesame', 10, TRUE),
+(19, 6, 'Royal Hyderabadi Mutton Haleem', 'Authentic GI-tagged delicacy made with broken wheat, tender mutton, lentils, and pure ghee topped with fried onions and cashew.', 350.00, FALSE, 'MEDIUM', '350 ml (Serves 1-2)', '/images/dishes/mutton_haleem.jpg', 'Contains Gluten, Dairy, Nuts', 15, TRUE),
+(20, 6, 'Special Irani Chicken Haleem', 'Light and flavorful chicken haleem cooked slowly with roasted spices, mint and lime.', 290.00, FALSE, 'MEDIUM', '350 ml (Serves 1-2)', '/images/dishes/chicken_haleem.jpg', 'Contains Gluten, Dairy', 15, TRUE),
+(21, 6, 'Hyderabadi Mirchi Ka Salan (Side)', 'Traditional tangy peanut and sesame seed curry with roasted Bhavnagri green chilies.', 160.00, TRUE, 'SPICY', '250 ml', '/images/dishes/mirchi_salan.jpg', 'Contains Peanuts, Sesame', 10, TRUE),
 
 -- Desserts
-(22, 7, 'Double Ka Meetha', 'Royal Hyderabadi bread pudding soaked in saffron cardamom milk, condensed milk and ghee with fried dry fruits.', 150.00, TRUE, 'MILD', 'Single portion', 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=800&q=80', 'Contains Dairy, Gluten, Nuts', 10, TRUE),
-(23, 7, 'Shahi Qubani Ka Meetha', 'Traditional stewed apricot dessert garnished with apricot kernels and fresh clotted cream (malai).', 180.00, TRUE, 'MILD', 'Single portion', 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=800&q=80', 'Contains Nuts, Dairy', 10, TRUE),
-(24, 7, 'Gulab Jamun (2 pcs)', 'Soft milk-solid dumplings dipped in rose-cardamom sugar syrup.', 90.00, TRUE, 'MILD', '2 pieces', 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=800&q=80', 'Contains Dairy, Gluten', 5, TRUE),
+(22, 7, 'Double Ka Meetha', 'Royal Hyderabadi bread pudding soaked in saffron cardamom milk, condensed milk and ghee with fried dry fruits.', 150.00, TRUE, 'MILD', 'Single portion', '/images/dishes/double_ka_meetha.jpg', 'Contains Dairy, Gluten, Nuts', 10, TRUE),
+(23, 7, 'Shahi Qubani Ka Meetha', 'Traditional stewed apricot dessert garnished with apricot kernels and fresh clotted cream (malai).', 180.00, TRUE, 'MILD', 'Single portion', '/images/dishes/qubani_meetha.jpg', 'Contains Nuts, Dairy', 10, TRUE),
+(24, 7, 'Gulab Jamun (2 pcs)', 'Soft milk-solid dumplings dipped in rose-cardamom sugar syrup.', 90.00, TRUE, 'MILD', '2 pieces', '/images/dishes/gulab_jamun.jpg', 'Contains Dairy, Gluten', 5, TRUE),
 
 -- Beverages
-(25, 8, 'Hyderabadi Irani Chai (Thermos Flask)', 'Rich and creamy slow-simmered Nizami tea served piping hot.', 80.00, TRUE, 'MILD', '250 ml', 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=800&q=80', 'Contains Dairy', 5, TRUE),
-(26, 8, 'Masala Buttermilk (Chaas)', 'Cooling churned curd infused with ginger, green chilies, cilantro and roasted cumin.', 60.00, TRUE, 'MILD', '300 ml', 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=800&q=80', 'Contains Dairy', 5, TRUE),
-(27, 8, 'Mango Lassi', 'Thick creamy Alphonso mango yogurt beverage served chilled.', 120.00, TRUE, 'MILD', '300 ml', 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=800&q=80', 'Contains Dairy', 5, TRUE),
-(28, 8, 'Fresh Lime Soda (Sweet & Salt)', 'Crisp sparkling soda with fresh squeezed lime juice and rock salt.', 70.00, TRUE, 'MILD', '300 ml', 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=800&q=80', 'None', 5, TRUE);
+(25, 8, 'Hyderabadi Irani Chai (Thermos Flask)', 'Rich and creamy slow-simmered Nizami tea served piping hot.', 80.00, TRUE, 'MILD', '250 ml', '/images/dishes/irani_chai.jpg', 'Contains Dairy', 5, TRUE),
+(26, 8, 'Masala Buttermilk (Chaas)', 'Cooling churned curd infused with ginger, green chilies, cilantro and roasted cumin.', 60.00, TRUE, 'MILD', '300 ml', '/images/dishes/chaas.jpg', 'Contains Dairy', 5, TRUE),
+(27, 8, 'Mango Lassi', 'Thick creamy Alphonso mango yogurt beverage served chilled.', 120.00, TRUE, 'MILD', '300 ml', '/images/dishes/mango_lassi.jpg', 'Contains Dairy', 5, TRUE),
+(28, 8, 'Fresh Lime Soda (Sweet & Salt)', 'Crisp sparkling soda with fresh squeezed lime juice and rock salt.', 70.00, TRUE, 'MILD', '300 ml', '/images/dishes/lime_soda.jpg', 'None', 5, TRUE);
 
 -- 8. OUTLET MENU AVAILABILITY (Populate for Kondapur, Gachibowli, Kukatpally, etc.)
 INSERT INTO outlet_menu (outlet_id, menu_item_id, custom_price, is_available, is_featured)
@@ -216,8 +216,8 @@ INSERT INTO loyalty_transactions (account_id, order_id, transaction_type, points
 
 -- 13. PARTY ORDERS
 INSERT INTO party_orders (id, customer_name, phone_number, email, event_date, event_time, number_of_guests, outlet_id, food_selections_json, estimated_budget, special_instructions, status, catering_manager_notes) VALUES
-(1, 'CyberTech Solutions Annual Meet', '+919876543210', 'hr@cybertechhyd.com', DATE_ADD(CURDATE(), INTERVAL 10 DAY), '19:30', 80, 1, '[{"item":"Chicken Dum Biryani (Family Pack)","qty":20},{"item":"Apollo Fish","qty":15},{"item":"Double Ka Meetha","qty":80}]', 35000.00, 'Requires chafing dishes and live service staff.', 'APPROVED', 'Confirmed date. Kondapur outlet team notified. 50% advance received.'),
-(2, 'Ananya Birthday Celebration', '+919876543211', 'fatima.khan@example.com', DATE_ADD(CURDATE(), INTERVAL 14 DAY), '13:00', 35, 5, '[{"item":"Mutton Dum Biryani","qty":25},{"item":"Paneer Tikka Biryani","qty":10},{"item":"Shahi Qubani Ka Meetha","qty":35}]', 18500.00, 'Mild spice level for kids section.', 'PENDING', 'Under review for Jubilee Hills banquet delivery.');
+(1, 'CyberTech Solutions Annual Meet', '+919876543210', 'hr@cybertechhyd.com', DATE_ADD(CURDATE(), INTERVAL 10 DAY), '19:30', 80, 1, 'Chicken Dum Biryani (Family Pack) × 20, Apollo Fish × 15, Double Ka Meetha × 80', 35000.00, 'Requires chafing dishes and live service staff.', 'APPROVED', 'Confirmed date. Kondapur outlet team notified. 50% advance received.'),
+(2, 'Ananya Birthday Celebration', '+919876543211', 'fatima.khan@example.com', DATE_ADD(CURDATE(), INTERVAL 14 DAY), '13:00', 35, 5, 'Mutton Dum Biryani × 25, Paneer Tikka Biryani × 10, Shahi Qubani Ka Meetha × 35', 18500.00, 'Mild spice level for kids section.', 'PENDING', 'Under review for Jubilee Hills banquet delivery.');
 
 -- 14. NOTIFICATIONS
 INSERT INTO notifications (user_id, order_id, outlet_id, title, message, type, is_read) VALUES

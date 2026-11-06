@@ -39,6 +39,61 @@ export const CateringDashboard: React.FC = () => {
     }
   };
 
+  const renderDishes = (foodData: string) => {
+    if (!foodData) return null;
+
+    try {
+      const parsed = JSON.parse(foodData);
+      if (Array.isArray(parsed)) {
+        return (
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {parsed.map((dish: any, idx: number) => {
+              const name = dish.item || dish.name || dish.dish || (typeof dish === 'string' ? dish : JSON.stringify(dish));
+              const qty = dish.qty || dish.quantity || dish.count;
+              return (
+                <span
+                  key={idx}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-maroon-50 text-maroon-950 border border-maroon-200/70 shadow-2xs"
+                >
+                  <span className="font-medium">{name}</span>
+                  {qty !== undefined && (
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold bg-maroon-800 text-white rounded-md tracking-wide">
+                      × {qty}
+                    </span>
+                  )}
+                </span>
+              );
+            })}
+          </div>
+        );
+      }
+    } catch (e) {
+      // Not JSON format
+    }
+
+    const items = foodData.split(',').map((s) => s.trim()).filter(Boolean);
+    if (items.length > 1) {
+      return (
+        <div className="flex flex-wrap gap-1.5 mt-1.5">
+          {items.map((item, idx) => (
+            <span
+              key={idx}
+              className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-semibold bg-maroon-50 text-maroon-950 border border-maroon-200/70 shadow-2xs"
+            >
+              {item}
+            </span>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <p className="mt-1 text-xs font-medium text-charcoal-800 bg-cream-50 p-2.5 rounded-xl border border-cream-200">
+        {foodData}
+      </p>
+    );
+  };
+
   return (
     <div className="min-h-screen py-8 max-w-7xl mx-auto px-4 sm:px-6 space-y-6">
       <div className="bg-white p-6 rounded-3xl border border-cream-200 shadow-sm">
@@ -91,7 +146,7 @@ export const CateringDashboard: React.FC = () => {
 
                 <div className="mt-3 text-xs text-charcoal-700">
                   <span className="font-bold text-charcoal-900 block mb-0.5">Dishes Desired:</span>
-                  <p className="bg-cream-50/50 p-2 rounded-xl border border-cream-100 font-mono text-[11px]">{po.foodSelectionsJson}</p>
+                  {renderDishes(po.foodSelectionsJson)}
                 </div>
 
                 {po.specialInstructions && (
