@@ -34,6 +34,8 @@ public class OrderService {
     private final NotificationRepository notificationRepository;
     private final AiService aiService;
     private final WebSocketService webSocketService;
+    private final AuditLogService auditLogService;
+    private final PaymentGatewayService paymentGatewayService;
 
     public OrderService(OrderRepository orderRepository,
                         OrderItemRepository orderItemRepository,
@@ -47,7 +49,9 @@ public class OrderService {
                         LoyaltyTransactionRepository loyaltyTransactionRepository,
                         NotificationRepository notificationRepository,
                         AiService aiService,
-                        WebSocketService webSocketService) {
+                        WebSocketService webSocketService,
+                        AuditLogService auditLogService,
+                        PaymentGatewayService paymentGatewayService) {
         this.orderRepository = orderRepository;
         this.orderItemRepository = orderItemRepository;
         this.paymentRepository = paymentRepository;
@@ -61,6 +65,8 @@ public class OrderService {
         this.notificationRepository = notificationRepository;
         this.aiService = aiService;
         this.webSocketService = webSocketService;
+        this.auditLogService = auditLogService;
+        this.paymentGatewayService = paymentGatewayService;
     }
 
     @Transactional
@@ -190,14 +196,18 @@ public class OrderService {
 
         Order savedOrder = orderRepository.save(order);
 
-        // 7. Payment Record
+        // 7. Payment Record via PaymentGatewayService abstraction
+        PaymentGatewayService.PaymentResult payResult = paymentGatewayService.processPayment(
+                savedOrder.getId(), savedOrder.getOrderNumber(), netTotal, savedOrder.getPaymentMethod(), savedOrder.getCustomerPhone()
+        );
+
         Payment payment = new Payment();
         payment.setOrder(savedOrder);
-        payment.setTransactionRef("TXN-" + savedOrder.getPaymentMethod() + "-" + (100000 + new Random().nextInt(900000)));
+        payment.setTransactionRef(payResult.getTransactionRef());
         payment.setPaymentMethod(savedOrder.getPaymentMethod());
         payment.setAmount(netTotal);
-        payment.setStatus("SUCCESS");
-        payment.setGatewayResponse("{\"status\":\"SUCCESS\",\"mock\":true,\"gateway\":\"Razorpay-Mock-Test\"}");
+        payment.setStatus(payResult.isSuccess() ? "SUCCESS" : "FAILED");
+        payment.setGatewayResponse(payResult.getRawResponse());
         paymentRepository.save(payment);
 
         // 8. Order Status History
@@ -205,6 +215,10 @@ public class OrderService {
                 savedOrder, "PLACED", "Order successfully placed via Hyderabad House Direct Platform", customer.getId()
         );
         statusHistoryRepository.save(history);
+
+        // Audit Trail
+        auditLogService.log(customer.getId(), customer.getName(), "CUSTOMER", "ORDER_PLACED", "ORDER",
+                savedOrder.getOrderNumber(), "Placed order for ₹" + netTotal + " at " + outlet.getName());
 
         // 9. Award Loyalty Points (10% of order total earned as points)
         awardLoyaltyPoints(customer.getId(), savedOrder.getId(), netTotal);
@@ -267,6 +281,10 @@ public class OrderService {
                 saved, newStatus, request.getNotes() != null ? request.getNotes() : "Status updated to " + newStatus, updatedByUserId
         );
         statusHistoryRepository.save(history);
+
+        // Audit log
+        auditLogService.log(updatedByUserId, "Staff/System", "STAFF", "ORDER_STATUS_CHANGED", "ORDER",
+                saved.getOrderNumber(), "Order transitioned to " + newStatus + (request.getNotes() != null ? " (" + request.getNotes() + ")" : ""));
 
         // Notification to customer
         Notification notif = new Notification(

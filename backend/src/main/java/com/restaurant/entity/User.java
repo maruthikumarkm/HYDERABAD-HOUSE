@@ -30,6 +30,14 @@ public class User {
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 
+    @Column(name = "reset_password_token", length = 100)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private String resetPasswordToken;
+
+    @Column(name = "reset_password_expiry")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private LocalDateTime resetPasswordExpiry;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
@@ -69,6 +77,12 @@ public class User {
 
     public Boolean getIsActive() { return isActive; }
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+
+    public String getResetPasswordToken() { return resetPasswordToken; }
+    public void setResetPasswordToken(String resetPasswordToken) { this.resetPasswordToken = resetPasswordToken; }
+
+    public LocalDateTime getResetPasswordExpiry() { return resetPasswordExpiry; }
+    public void setResetPasswordExpiry(LocalDateTime resetPasswordExpiry) { this.resetPasswordExpiry = resetPasswordExpiry; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

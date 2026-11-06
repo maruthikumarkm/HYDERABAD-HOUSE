@@ -17,15 +17,24 @@ public class AdminController {
 
     private final MenuService menuService;
     private final AnalyticsService analyticsService;
+    private final com.restaurant.service.AuditLogService auditLogService;
 
-    public AdminController(MenuService menuService, AnalyticsService analyticsService) {
+    public AdminController(MenuService menuService,
+                           AnalyticsService analyticsService,
+                           com.restaurant.service.AuditLogService auditLogService) {
         this.menuService = menuService;
         this.analyticsService = analyticsService;
+        this.auditLogService = auditLogService;
     }
 
     @GetMapping("/analytics")
     public ResponseEntity<Map<String, Object>> getAnalytics() {
         return ResponseEntity.ok(analyticsService.getManagementAnalytics());
+    }
+
+    @GetMapping("/audit-logs")
+    public ResponseEntity<?> getAuditLogs() {
+        return ResponseEntity.ok(auditLogService.getRecentAuditLogs());
     }
 
     @PostMapping("/items")

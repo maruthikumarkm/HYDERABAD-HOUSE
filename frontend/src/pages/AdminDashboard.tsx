@@ -31,11 +31,12 @@ import api from '../services/api';
 const COLORS = ['#800020', '#D4AF37', '#2563EB', '#10B981', '#8B5CF6', '#F59E0B'];
 
 export const AdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'ANALYTICS' | 'MENU'>('ANALYTICS');
+  const [activeTab, setActiveTab] = useState<'ANALYTICS' | 'MENU' | 'AUDIT'>('ANALYTICS');
   const [analytics, setAnalytics] = useState<any>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [outlets, setOutlets] = useState<Outlet[]>([]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Modal state for Add/Edit Item
@@ -57,16 +58,18 @@ export const AdminDashboard: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [analyticsRes, itemsRes, catRes, outletsRes] = await Promise.all([
+      const [analyticsRes, itemsRes, catRes, outletsRes, auditRes] = await Promise.all([
         api.get('/admin/analytics'),
         api.get('/menu/items'),
         api.get('/menu/categories'),
         api.get('/outlets'),
+        api.get('/admin/audit-logs').catch(() => ({ data: [] })),
       ]);
       setAnalytics(analyticsRes.data);
       setMenuItems(itemsRes.data);
       setCategories(catRes.data);
       setOutlets(outletsRes.data);
+      setAuditLogs(auditRes.data || []);
     } catch (err) {
       console.error('Failed to load admin data', err);
     } finally {
@@ -173,6 +176,15 @@ export const AdminDashboard: React.FC = () => {
             }`}
           >
             Menu Catalog ({menuItems.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('AUDIT')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'AUDIT' ? 'bg-maroon-900 text-white shadow-xs' : 'text-charcoal-700 hover:text-maroon-900'
+            }`}
+          >
+            Activity Audit Trail ({auditLogs.length})
           </button>
         </div>
       </div>
@@ -347,6 +359,67 @@ export const AdminDashboard: React.FC = () => {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {activeTab === 'AUDIT' && (
+        <div className="bg-white rounded-3xl border border-cream-200 shadow-sm p-6 space-y-4 animate-in fade-in duration-200">
+          <div className="flex items-center justify-between pb-3 border-b border-cream-100">
+            <div>
+              <h3 className="font-serif font-bold text-lg text-maroon-950">System Audit Trail</h3>
+              <p className="text-xs text-charcoal-500">Immutable chronological log of platform orders, kitchen dispatches, and administrative changes</p>
+            </div>
+            <span className="text-xs font-bold text-gold-800 bg-gold-50 px-3 py-1 rounded-full border border-gold-200">
+              {auditLogs.length} Events Logged
+            </span>
+          </div>
+
+          {auditLogs.length === 0 ? (
+            <div className="py-16 text-center text-charcoal-400 text-xs">
+              No audit log entries recorded yet.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-charcoal-800">
+                <thead className="bg-cream-50 text-charcoal-600 font-bold uppercase tracking-wider text-[10px] border-b border-cream-200">
+                  <tr>
+                    <th className="py-3 px-4">Timestamp</th>
+                    <th className="py-3 px-4">User</th>
+                    <th className="py-3 px-4">Role</th>
+                    <th className="py-3 px-4">Action</th>
+                    <th className="py-3 px-4">Target Entity</th>
+                    <th className="py-3 px-4">Details</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-cream-100">
+                  {auditLogs.map((log: any) => (
+                    <tr key={log.id} className="hover:bg-cream-50/60 transition-colors">
+                      <td className="py-3 px-4 font-mono text-[11px] text-charcoal-500 whitespace-nowrap">
+                        {log.createdAt ? new Date(log.createdAt).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'medium' }) : '-'}
+                      </td>
+                      <td className="py-3 px-4 font-bold text-charcoal-900">{log.userName || 'System'}</td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-cream-100 text-maroon-800">
+                          {log.userRole || 'SYSTEM'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-maroon-50 text-maroon-900 border border-maroon-200">
+                          {log.action}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-charcoal-700">
+                        {log.entityType} <span className="font-mono text-maroon-900">#{log.entityId}</span>
+                      </td>
+                      <td className="py-3 px-4 text-charcoal-600 max-w-xs truncate" title={log.details}>
+                        {log.details || '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

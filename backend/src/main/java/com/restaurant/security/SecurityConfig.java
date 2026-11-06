@@ -98,6 +98,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/outlet-manager/**").hasAnyRole("OUTLET_MANAGER", "CENTRAL_ADMIN")
                 .requestMatchers("/api/kitchen/**").hasAnyRole("KITCHEN_STAFF", "OUTLET_MANAGER", "CENTRAL_ADMIN")
                 .requestMatchers("/api/catering/**").hasAnyRole("CATERING_MANAGER", "CENTRAL_ADMIN")
+                .requestMatchers("/api/party-orders/**").hasAnyRole("CATERING_MANAGER", "CENTRAL_ADMIN")
                 .requestMatchers("/api/customer/**").authenticated()
                 .requestMatchers("/api/orders/**").authenticated()
                 .anyRequest().authenticated()

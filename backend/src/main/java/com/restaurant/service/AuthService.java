@@ -14,6 +14,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
+import java.util.Map;
+import java.util.HashMap;
 
 @Service
 public class AuthService {
@@ -26,6 +28,7 @@ public class AuthService {
     private final CustomerMarketingPreferenceRepository marketingPreferenceRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtils jwtUtils;
+    private final AuditLogService auditLogService;
 
     public AuthService(AuthenticationManager authenticationManager,
                        UserRepository userRepository,
@@ -34,7 +37,8 @@ public class AuthService {
                        LoyaltyAccountRepository loyaltyAccountRepository,
                        CustomerMarketingPreferenceRepository marketingPreferenceRepository,
                        PasswordEncoder passwordEncoder,
-                       JwtUtils jwtUtils) {
+                       JwtUtils jwtUtils,
+                       AuditLogService auditLogService) {
         this.authenticationManager = authenticationManager;
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
@@ -43,6 +47,7 @@ public class AuthService {
         this.marketingPreferenceRepository = marketingPreferenceRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtils = jwtUtils;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional
@@ -107,6 +112,9 @@ public class AuthService {
         preferences.setWhatsappUpdates(Boolean.TRUE.equals(request.getWhatsappUpdates()));
         marketingPreferenceRepository.save(preferences);
 
+        // Audit log
+        auditLogService.log(savedUser.getId(), savedUser.getName(), "CUSTOMER", "USER_REGISTERED", "USER", savedUser.getId().toString(), "Customer registered with phone: " + savedUser.getPhone());
+
         // Authenticate & create JWT
         UserPrincipal userPrincipal = UserPrincipal.create(savedUser, null);
         String jwt = jwtUtils.generateTokenFromUser(userPrincipal);
@@ -123,8 +131,58 @@ public class AuthService {
         );
     }
 
-    public String handleForgotPassword(ForgotPasswordRequest request) {
-        // In demo environment, verify user exists or mock recovery flow
-        return "Demo recovery token generated. A password reset link has been dispatched to: " + request.getEmail();
+    @Transactional
+    public Map<String, Object> handleForgotPassword(ForgotPasswordRequest request) {
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new IllegalArgumentException("No registered account found with email: " + request.getEmail()));
+
+        String token = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16).toUpperCase();
+        user.setResetPasswordToken(token);
+        user.setResetPasswordExpiry(java.time.LocalDateTime.now().plusHours(1));
+        userRepository.save(user);
+
+        auditLogService.log(user.getId(), user.getName(), user.getRole().getName(), "PASSWORD_RESET_REQUESTED", "USER", user.getId().toString(), "Password reset token generated: " + token);
+
+        Map<String, Object> res = new java.util.HashMap<>();
+        res.put("success", true);
+        res.put("message", "Password reset instructions dispatched. Use the recovery token below to set your new password.");
+        res.put("token", token); // Exposed for seamless testing & direct entry
+        res.put("expiresAt", user.getResetPasswordExpiry().toString());
+        return res;
+    }
+
+    @Transactional
+    public Map<String, Object> resetPassword(ResetPasswordRequest request) {
+        User user = userRepository.findByResetPasswordToken(request.getToken().trim())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid or unrecognized password reset token."));
+
+        if (user.getResetPasswordExpiry() == null || user.getResetPasswordExpiry().isBefore(java.time.LocalDateTime.now())) {
+            throw new IllegalArgumentException("Password reset token has expired. Please request a new one.");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        user.setResetPasswordToken(null);
+        user.setResetPasswordExpiry(null);
+        userRepository.save(user);
+
+        auditLogService.log(user.getId(), user.getName(), user.getRole().getName(), "PASSWORD_RESET_COMPLETED", "USER", user.getId().toString(), "Password successfully updated.");
+
+        Map<String, Object> res = new java.util.HashMap<>();
+        res.put("success", true);
+        res.put("message", "Password reset successful! You can now sign in with your new password.");
+        return res;
+    }
+
+    @Transactional
+    public User updateUserProfile(Long userId, UpdateProfileRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found with id: " + userId));
+
+        user.setName(request.getName());
+        user.setPhone(request.getPhone());
+        User updated = userRepository.save(user);
+
+        auditLogService.log(user.getId(), user.getName(), user.getRole().getName(), "PROFILE_UPDATED", "USER", user.getId().toString(), "Updated name to " + request.getName() + ", phone to " + request.getPhone());
+        return updated;
     }
 }

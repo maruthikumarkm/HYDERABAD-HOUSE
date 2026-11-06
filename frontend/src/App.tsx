@@ -17,6 +17,7 @@ import KitchenDisplayPage from './pages/KitchenDisplayPage';
 import OutletManagerDashboard from './pages/OutletManagerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import CateringDashboard from './pages/CateringDashboard';
+import ProfilePage from './pages/ProfilePage';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -52,6 +53,16 @@ export const AppContent: React.FC = () => {
           <Route path="/party-orders" element={<PartyOrdersPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+
+          {/* Authenticated Profile Route */}
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <ProfilePage />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Role-Based Protected Routes */}
           <Route

@@ -45,6 +45,8 @@ CREATE TABLE users (
     password_hash VARCHAR(255) NOT NULL,
     role_id BIGINT NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    reset_password_token VARCHAR(100) NULL,
+    reset_password_expiry DATETIME NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_user_email (email),
@@ -334,4 +336,20 @@ CREATE TABLE customer_marketing_preferences (
     privacy_policy_version VARCHAR(20) NOT NULL DEFAULT 'v1.0-2024',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_cmp_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 21. Audit Logs / Activity Trail
+CREATE TABLE audit_logs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NULL,
+    user_name VARCHAR(120) NULL,
+    user_role VARCHAR(40) NULL,
+    action VARCHAR(60) NOT NULL,
+    entity_type VARCHAR(60) NOT NULL,
+    entity_id VARCHAR(60) NULL,
+    details TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_audit_user (user_id),
+    INDEX idx_audit_action (action),
+    INDEX idx_audit_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

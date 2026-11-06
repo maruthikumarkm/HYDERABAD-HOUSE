@@ -189,6 +189,15 @@ export const Navbar: React.FC = () => {
                       )}
 
                       <Link
+                        to="/profile"
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className="flex items-center space-x-2 px-4 py-2.5 text-xs font-medium text-charcoal-800 hover:bg-cream-50"
+                      >
+                        <UserIcon className="w-4 h-4 text-maroon-800" />
+                        <span>My Profile & Account</span>
+                      </Link>
+
+                      <Link
                         to="/history"
                         onClick={() => setIsUserMenuOpen(false)}
                         className="flex items-center space-x-2 px-4 py-2.5 text-xs font-medium text-charcoal-800 hover:bg-cream-50"
@@ -316,6 +325,36 @@ export const Navbar: React.FC = () => {
               >
                 Live Order Tracking
               </Link>
+              {isAuthenticated ? (
+                <>
+                  <Link
+                    to="/profile"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="block py-2 text-maroon-900 font-bold hover:underline"
+                  >
+                    My Profile & Settings
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      logout();
+                      setIsMobileMenuOpen(false);
+                      navigate('/login');
+                    }}
+                    className="block w-full text-left py-2 text-red-600 font-bold"
+                  >
+                    Sign Out
+                  </button>
+                </>
+              ) : (
+                <Link
+                  to="/login"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="block py-2 text-maroon-900 font-bold"
+                >
+                  Sign In / Register
+                </Link>
+              )}
             </div>
           </div>
         )}

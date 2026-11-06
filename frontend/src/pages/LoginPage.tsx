@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   Flame, 
   Lock, 
@@ -8,10 +8,9 @@ import {
   EyeOff, 
   ArrowRight, 
   ShieldCheck, 
-  ChefHat, 
-  BarChart3, 
-  Users, 
-  Calendar 
+  KeyRound,
+  CheckCircle2,
+  X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -22,29 +21,34 @@ export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [forgotMsg, setForgotMsg] = useState<string | null>(null);
+
+  // Forgot / Reset Password state
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetStep, setResetStep] = useState<1 | 2>(1); // 1 = enter email, 2 = enter token + new password
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetSuccess, setResetSuccess] = useState<string | null>(null);
 
   const { login } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
 
-  const handleLoginSubmit = async (e?: React.FormEvent, customEmail?: string, customPassword?: string) => {
-    if (e) e.preventDefault();
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setLoading(true);
     setError(null);
-    setForgotMsg(null);
-
-    const loginEmail = customEmail || email;
-    const loginPass = customPassword || password;
 
     try {
       const res = await api.post('/auth/login', {
-        email: loginEmail,
-        password: loginPass,
+        email: email.trim(),
+        password,
       });
 
       const { token, id, name, role, outletId, loyaltyPoints } = res.data;
-      login(token, { id, name, email: loginEmail, role, outletId, loyaltyPoints });
+      login(token, { id, name, email: email.trim(), role, outletId, loyaltyPoints });
 
       // Role-based redirection
       switch (role) {
@@ -64,28 +68,61 @@ export const LoginPage: React.FC = () => {
           navigate('/');
       }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Invalid email or password. Please try again.');
+      setError(err.response?.data?.error || 'Invalid email or password. Please verify your credentials.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDemoLogin = (demoEmail: string) => {
-    setEmail(demoEmail);
-    setPassword('password123');
-    handleLoginSubmit(undefined, demoEmail, 'password123');
+  const handleRequestResetToken = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetLoading(true);
+    setResetError(null);
+
+    try {
+      const res = await api.post('/auth/forgot-password', { email: resetEmail.trim() });
+      if (res.data.token) {
+        setResetToken(res.data.token);
+      }
+      setResetStep(2);
+    } catch (err: any) {
+      setResetError(err.response?.data?.error || 'No registered account found with this email address.');
+    } finally {
+      setResetLoading(false);
+    }
   };
 
-  const handleForgotPassword = async () => {
-    if (!email) {
-      setError('Please enter your email address to recover your password.');
+  const handleCompleteReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      setResetError('Password must be at least 6 characters long.');
       return;
     }
+    if (newPassword !== confirmPassword) {
+      setResetError('Passwords do not match. Please retype carefully.');
+      return;
+    }
+
+    setResetLoading(true);
+    setResetError(null);
+
     try {
-      const res = await api.post('/auth/forgot-password', { email });
-      setForgotMsg(res.data.message);
+      const res = await api.post('/auth/reset-password', {
+        token: resetToken.trim(),
+        newPassword,
+      });
+      setResetSuccess(res.data.message || 'Password successfully updated! You can now sign in.');
+      setTimeout(() => {
+        setIsResetModalOpen(false);
+        setPassword(newPassword);
+        setEmail(resetEmail);
+        setResetStep(1);
+        setResetSuccess(null);
+      }, 1800);
     } catch (err: any) {
-      setError('Error processing password reset request.');
+      setResetError(err.response?.data?.error || 'Failed to reset password. Please check your token.');
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -103,64 +140,11 @@ export const LoginPage: React.FC = () => {
             Sign In to Hyderabad House
           </h2>
           <p className="text-xs text-charcoal-500">
-            Direct Food Ordering Platform & Operations Suite
+            Direct Food Ordering Platform & Operational Suites
           </p>
         </div>
 
-        {/* 1-Click Demo Logins for All 5 Roles */}
-        <div className="bg-cream-100 p-4 rounded-3xl border border-cream-200 space-y-2.5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-charcoal-600 block text-center">
-            ⚡ 1-Click Demo Accounts
-          </span>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <button
-              type="button"
-              onClick={() => handleDemoLogin('customer@hyderabadhouse.com')}
-              className="p-2 bg-white hover:bg-cream-50 border border-cream-300 rounded-xl font-semibold text-charcoal-800 flex items-center space-x-1.5 shadow-2xs hover:border-maroon-800 transition-colors"
-            >
-              <Users className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
-              <span className="truncate">Customer</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleDemoLogin('kitchen.kondapur@hyderabadhouse.com')}
-              className="p-2 bg-white hover:bg-cream-50 border border-cream-300 rounded-xl font-semibold text-charcoal-800 flex items-center space-x-1.5 shadow-2xs hover:border-maroon-800 transition-colors"
-            >
-              <ChefHat className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-              <span className="truncate">Kitchen Staff</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleDemoLogin('manager.kondapur@hyderabadhouse.com')}
-              className="p-2 bg-white hover:bg-cream-50 border border-cream-300 rounded-xl font-semibold text-charcoal-800 flex items-center space-x-1.5 shadow-2xs hover:border-maroon-800 transition-colors"
-            >
-              <BarChart3 className="w-3.5 h-3.5 text-purple-600 flex-shrink-0" />
-              <span className="truncate">Outlet Manager</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleDemoLogin('admin@hyderabadhouse.com')}
-              className="p-2 bg-white hover:bg-cream-50 border border-cream-300 rounded-xl font-semibold text-charcoal-800 flex items-center space-x-1.5 shadow-2xs hover:border-maroon-800 transition-colors"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />
-              <span className="truncate">Central Admin</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleDemoLogin('catering@hyderabadhouse.com')}
-              className="col-span-2 p-2 bg-white hover:bg-cream-50 border border-cream-300 rounded-xl font-semibold text-charcoal-800 flex items-center justify-center space-x-1.5 shadow-2xs hover:border-maroon-800 transition-colors"
-            >
-              <Calendar className="w-3.5 h-3.5 text-gold-600 flex-shrink-0" />
-              <span>Catering Manager</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Regular Login Form */}
+        {/* Regular Secure Login Form */}
         <form onSubmit={handleLoginSubmit} className="bg-white p-6 sm:p-8 rounded-3xl border border-cream-200 shadow-xl space-y-4">
           <div>
             <label className="block text-xs font-bold text-charcoal-700 mb-1">Email Address</label>
@@ -182,7 +166,13 @@ export const LoginPage: React.FC = () => {
               <label className="block text-xs font-bold text-charcoal-700">Password</label>
               <button
                 type="button"
-                onClick={handleForgotPassword}
+                onClick={() => {
+                  setResetEmail(email);
+                  setIsResetModalOpen(true);
+                  setResetStep(1);
+                  setResetError(null);
+                  setResetSuccess(null);
+                }}
                 className="text-[11px] font-semibold text-maroon-800 hover:underline"
               >
                 Forgot password?
@@ -214,12 +204,6 @@ export const LoginPage: React.FC = () => {
             </div>
           )}
 
-          {forgotMsg && (
-            <div className="p-3 bg-blue-50 text-blue-700 border border-blue-200 rounded-xl text-xs font-medium">
-              {forgotMsg}
-            </div>
-          )}
-
           <button
             type="submit"
             disabled={loading}
@@ -237,6 +221,123 @@ export const LoginPage: React.FC = () => {
           </div>
         </form>
       </div>
+
+      {/* Forgot / Reset Password Modal */}
+      {isResetModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-950/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl p-6 sm:p-8 border border-cream-200 space-y-4 relative">
+            <button
+              type="button"
+              onClick={() => setIsResetModalOpen(false)}
+              className="absolute top-4 right-4 p-1 rounded-full text-charcoal-400 hover:text-charcoal-700 hover:bg-cream-100 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center space-x-3">
+              <div className="p-2.5 bg-maroon-50 text-maroon-900 rounded-2xl border border-maroon-200">
+                <KeyRound className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-serif font-bold text-lg text-maroon-950">Password Recovery</h3>
+                <p className="text-[11px] text-charcoal-500">
+                  {resetStep === 1 ? 'Enter your registered email to receive a recovery token' : 'Enter recovery token & new password'}
+                </p>
+              </div>
+            </div>
+
+            {resetError && (
+              <div className="p-3 bg-red-50 text-red-700 border border-red-200 rounded-xl text-xs font-medium">
+                {resetError}
+              </div>
+            )}
+
+            {resetSuccess && (
+              <div className="p-3 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-medium flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                <span>{resetSuccess}</span>
+              </div>
+            )}
+
+            {resetStep === 1 ? (
+              <form onSubmit={handleRequestResetToken} className="space-y-4 text-xs">
+                <div>
+                  <label className="block font-bold text-charcoal-700 mb-1">Registered Email</label>
+                  <input
+                    type="email"
+                    required
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    placeholder="name@hyderabadhouse.com"
+                    className="w-full px-3.5 py-2.5 bg-cream-50 rounded-xl border border-cream-200 focus:ring-2 focus:ring-maroon-800"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={resetLoading}
+                  className="w-full py-2.5 px-4 bg-maroon-900 hover:bg-black text-white font-bold rounded-xl transition-colors disabled:opacity-50"
+                >
+                  {resetLoading ? 'Generating Token...' : 'Generate Recovery Token'}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleCompleteReset} className="space-y-3.5 text-xs">
+                <div>
+                  <label className="block font-bold text-charcoal-700 mb-1">Recovery Token</label>
+                  <input
+                    type="text"
+                    required
+                    value={resetToken}
+                    onChange={(e) => setResetToken(e.target.value)}
+                    placeholder="Enter 16-character token"
+                    className="w-full px-3.5 py-2.5 bg-cream-50 rounded-xl border border-cream-200 font-mono tracking-wider focus:ring-2 focus:ring-maroon-800"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-charcoal-700 mb-1">New Password</label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="At least 6 characters"
+                    className="w-full px-3.5 py-2.5 bg-cream-50 rounded-xl border border-cream-200 focus:ring-2 focus:ring-maroon-800"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-charcoal-700 mb-1">Confirm New Password</label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter new password"
+                    className="w-full px-3.5 py-2.5 bg-cream-50 rounded-xl border border-cream-200 focus:ring-2 focus:ring-maroon-800"
+                  />
+                </div>
+                <div className="flex space-x-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setResetStep(1)}
+                    className="py-2.5 px-4 bg-cream-100 hover:bg-cream-200 text-charcoal-800 font-bold rounded-xl transition-colors"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={resetLoading}
+                    className="flex-1 py-2.5 px-4 bg-maroon-900 hover:bg-black text-white font-bold rounded-xl transition-colors disabled:opacity-50"
+                  >
+                    {resetLoading ? 'Updating Password...' : 'Save New Password'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -51,11 +51,26 @@ public class AuthController {
 
     @PostMapping("/forgot-password")
     public ResponseEntity<?> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
-        String msg = authService.handleForgotPassword(request);
-        Map<String, Object> res = new HashMap<>();
-        res.put("success", true);
-        res.put("message", msg);
-        return ResponseEntity.ok(res);
+        try {
+            Map<String, Object> res = authService.handleForgotPassword(request);
+            return ResponseEntity.ok(res);
+        } catch (Exception e) {
+            Map<String, String> err = new HashMap<>();
+            err.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(err);
+        }
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        try {
+            Map<String, Object> res = authService.resetPassword(request);
+            return ResponseEntity.ok(res);
+        } catch (Exception e) {
+            Map<String, String> err = new HashMap<>();
+            err.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(err);
+        }
     }
 
     @GetMapping("/me")
@@ -72,7 +87,29 @@ public class AuthController {
         res.put("outletId", userPrincipal.getOutletId());
         if (user != null) {
             res.put("phone", user.getPhone());
+            res.put("createdAt", user.getCreatedAt());
         }
         return ResponseEntity.ok(res);
+    }
+
+    @PutMapping("/profile")
+    public ResponseEntity<?> updateProfile(@AuthenticationPrincipal UserPrincipal userPrincipal,
+                                           @Valid @RequestBody UpdateProfileRequest request) {
+        if (userPrincipal == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "Not authenticated"));
+        }
+        try {
+            User updated = authService.updateUserProfile(userPrincipal.getId(), request);
+            Map<String, Object> res = new HashMap<>();
+            res.put("id", updated.getId());
+            res.put("name", updated.getName());
+            res.put("email", updated.getEmail());
+            res.put("phone", updated.getPhone());
+            res.put("role", updated.getRole().getName());
+            res.put("message", "Profile updated successfully.");
+            return ResponseEntity.ok(res);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 }

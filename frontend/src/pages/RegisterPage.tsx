@@ -9,6 +9,7 @@ export const RegisterPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   
   // DPDP Act 2023 Marketing consent flags (Optional)
   const [emailPromotions, setEmailPromotions] = useState(false);
@@ -23,6 +24,23 @@ export const RegisterPage: React.FC = () => {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match. Please verify your password.');
+      return;
+    }
+
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length < 10) {
+      setError('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -132,6 +150,22 @@ export const RegisterPage: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="At least 6 characters"
+                className="w-full pl-10 pr-4 py-2.5 bg-cream-50 rounded-xl border border-cream-200 focus:ring-2 focus:ring-maroon-800"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-charcoal-700 mb-1">Confirm Password</label>
+            <div className="relative">
+              <Lock className="w-4 h-4 text-charcoal-400 absolute left-3.5 top-3" />
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter your password"
                 className="w-full pl-10 pr-4 py-2.5 bg-cream-50 rounded-xl border border-cream-200 focus:ring-2 focus:ring-maroon-800"
               />
             </div>
