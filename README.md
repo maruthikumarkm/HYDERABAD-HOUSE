@@ -4,48 +4,7 @@ A production-grade, full-stack, direct restaurant ordering web application and r
 
 Designed to eliminate heavy third-party aggregator commissions (Swiggy, Zomato), this platform centralizes customer ordering, AI-powered preparation time forecasting, real-time kitchen dispatch, outlet management, catering/party booking, and administrative analytics.
 
----
 
-## 🏛️ System Architecture
-
-```mermaid
-flowchart TD
-    subgraph Client Tier ["Frontend Web Application (React 18 + Vite + TypeScript + Tailwind CSS)"]
-        CustomerPortal["Customer Web Storefront & Tracking"]
-        KDS["Kitchen Display System (Tablet Optimized)"]
-        OutletMgr["Outlet Manager Dashboard"]
-        AdminPortal["Central Admin & Analytics"]
-        CateringPortal["Catering & Party Order Manager"]
-    end
-
-    subgraph Backend Tier ["Backend Microservices (Java 21 + Spring Boot 3.3.5)"]
-        Security["Spring Security 6 (JWT + BCrypt)"]
-        OrderService["Order Service (5% GST, Validation)"]
-        KdsService["KDS WebSocket Broker (STOMP /ws)"]
-        RouterService["Haversine Geolocation Outlet Router"]
-        LateDetector["Late Order Detection Task (@Scheduled)"]
-    end
-
-    subgraph AI Tier ["AI Microservice (Python FastAPI + Scikit-Learn)"]
-        PrepModel["RandomForestRegressor Prep Time Predictor"]
-        ReorderEngine["Customer Reorder Recommender"]
-    end
-
-    subgraph Data Tier ["Persistent Storage (MySQL 8 / 9)"]
-        MySQL[("hyderabad_house DB (20 Relational Tables)")]
-    end
-
-    CustomerPortal -->|REST & WebSocket| Backend Tier
-    KDS -->|STOMP WebSocket /topic/kitchen/{id}| Backend Tier
-    OutletMgr -->|REST & WebSocket| Backend Tier
-    AdminPortal -->|REST /api/admin| Backend Tier
-    CateringPortal -->|REST /api/party-orders| Backend Tier
-
-    Backend Tier -->|REST HTTP :8000| AI Tier
-    Backend Tier -->|Spring Data JPA / Hibernate| MySQL
-```
-
----
 
 ## 🛠️ Technology Stack
 
