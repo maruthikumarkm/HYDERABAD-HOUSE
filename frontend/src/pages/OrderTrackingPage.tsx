@@ -12,22 +12,27 @@ import {
   ShieldCheck,
   ChevronRight,
   Flame,
-  Search
+  Search,
+  Phone,
+  Sparkles
 } from 'lucide-react';
 import { Order, OrderStatusHistory } from '../types';
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 import wsService from '../services/websocket';
 import api from '../services/api';
 
 export const OrderTrackingPage: React.FC = () => {
   const { orderNumber: paramOrderNumber } = useParams<{ orderNumber?: string }>();
-  const [orderNumberInput, setOrderNumberInput] = useState(paramOrderNumber || 'WEB-778120');
+  const [orderNumberInput, setOrderNumberInput] = useState(paramOrderNumber || '');
   const [order, setOrder] = useState<Order | null>(null);
   const [history, setHistory] = useState<OrderStatusHistory[]>([]);
+  const [userOrders, setUserOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState<number>(0);
   const { addItem, clearCart } = useCart();
+  const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
   const fetchOrder = async (num: string) => {
@@ -44,7 +49,7 @@ export const OrderTrackingPage: React.FC = () => {
         setRemainingSeconds(Math.max(0, Math.floor(diffMs / 1000)));
       }
     } catch (err: any) {
-      setError('Order not found. Please verify your order number (e.g. WEB-778120).');
+      setError(`Order ${num} not found. Please verify your order number.`);
       setOrder(null);
     } finally {
       setLoading(false);
@@ -52,13 +57,38 @@ export const OrderTrackingPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (paramOrderNumber) {
-      setOrderNumberInput(paramOrderNumber);
-      fetchOrder(paramOrderNumber);
+    if (paramOrderNumber && paramOrderNumber.trim()) {
+      setOrderNumberInput(paramOrderNumber.trim());
+      fetchOrder(paramOrderNumber.trim());
+    } else if (isAuthenticated) {
+      // Auto-fetch customer orders and default to latest active order!
+      api.get('/orders/my-orders')
+        .then((res) => {
+          const list: Order[] = res.data || [];
+          setUserOrders(list);
+          if (list.length > 0) {
+            const active = list.find((o) => 
+              ['PLACED', 'CONFIRMED', 'PREPARING', 'READY_FOR_PICKUP', 'RIDER_HANDOFF'].includes(o.status)
+            ) || list[0];
+            setOrderNumberInput(active.orderNumber);
+            fetchOrder(active.orderNumber);
+          } else {
+            setOrder(null);
+            setHistory([]);
+            setError(null);
+          }
+        })
+        .catch(() => {
+          setOrder(null);
+          setHistory([]);
+          setError(null);
+        });
     } else {
-      fetchOrder('WEB-778120'); // Demo preserved sample order
+      setOrder(null);
+      setHistory([]);
+      setError(null);
     }
-  }, [paramOrderNumber]);
+  }, [paramOrderNumber, isAuthenticated]);
 
   // Live WebSocket subscription for immediate updates without refresh!
   useEffect(() => {
@@ -66,12 +96,22 @@ export const OrderTrackingPage: React.FC = () => {
       const topic = `/topic/orders/${order.orderNumber}`;
       wsService.subscribe(topic, (updatedOrderPayload: any) => {
         console.log('[Live Tracking WS] Received update for order:', updatedOrderPayload);
-        // Refresh full order with history
         fetchOrder(order.orderNumber);
       });
 
+      // Also 5-second polling fallback so status always advances live
+      const poll = setInterval(() => {
+        api.get(`/orders/${order.orderNumber}`)
+          .then((res) => {
+            setOrder(res.data.order);
+            setHistory(res.data.history || []);
+          })
+          .catch(() => {});
+      }, 5000);
+
       return () => {
         wsService.unsubscribe(topic);
+        clearInterval(poll);
       };
     }
   }, [order?.orderNumber]);
@@ -125,13 +165,28 @@ export const OrderTrackingPage: React.FC = () => {
     { key: 'CONFIRMED', label: 'Accepted', icon: CheckCircle2 },
     { key: 'PREPARING', label: 'Dum Prep', icon: ChefHat },
     { key: 'READY_FOR_PICKUP', label: 'Packed & Ready', icon: Flame },
-    { key: 'RIDER_HANDOFF', label: 'On The Way', icon: Bike },
-    { key: 'COMPLETED', label: 'Delivered', icon: CheckCircle2 },
+    { key: 'ASSIGNED', label: 'Rider Assigned', icon: Bike },
+    { key: 'PICKED_UP', label: 'Picked Up', icon: Bike },
+    { key: 'OUT_FOR_DELIVERY', label: 'On Route', icon: Bike },
+    { key: 'DELIVERED', label: 'Delivered', icon: CheckCircle2 },
   ];
 
   const getStepIndex = (status: string) => {
-    const idx = steps.findIndex((s) => s.key === status);
-    return idx >= 0 ? idx : 0;
+    switch (status) {
+      case 'PLACED': return 0;
+      case 'CONFIRMED': return 1;
+      case 'PREPARING': return 2;
+      case 'READY':
+      case 'READY_FOR_PICKUP': return 3;
+      case 'ASSIGNED':
+      case 'ACCEPTED': return 4;
+      case 'PICKED_UP': return 5;
+      case 'OUT_FOR_DELIVERY':
+      case 'RIDER_HANDOFF': return 6;
+      case 'DELIVERED':
+      case 'COMPLETED': return 7;
+      default: return 0;
+    }
   };
 
   const currentStepIdx = order ? getStepIndex(order.status) : 0;
@@ -158,7 +213,7 @@ export const OrderTrackingPage: React.FC = () => {
               type="text"
               value={orderNumberInput}
               onChange={(e) => setOrderNumberInput(e.target.value)}
-              placeholder="e.g. WEB-778120"
+              placeholder="Enter Order # (e.g. WEB-123456)"
               className="w-full pl-8 pr-3 py-2 bg-cream-50 rounded-xl border border-cream-200 text-xs font-bold uppercase focus:ring-2 focus:ring-maroon-800"
             />
           </div>
@@ -170,6 +225,53 @@ export const OrderTrackingPage: React.FC = () => {
           </button>
         </form>
       </div>
+
+      {/* Multiple Orders Quick Switcher for Customer */}
+      {userOrders.length > 1 && (
+        <div className="bg-white p-3 rounded-2xl border border-cream-200 flex items-center gap-2 overflow-x-auto text-xs">
+          <span className="text-charcoal-500 font-bold text-[11px] uppercase tracking-wider flex-shrink-0">
+            Your Orders:
+          </span>
+          <div className="flex gap-2">
+            {userOrders.map((uo) => (
+              <button
+                key={uo.id}
+                type="button"
+                onClick={() => {
+                  setOrderNumberInput(uo.orderNumber);
+                  navigate(`/track/${uo.orderNumber}`);
+                }}
+                className={`px-3 py-1 rounded-xl font-bold flex items-center gap-1.5 transition-all text-xs ${
+                  order?.orderNumber === uo.orderNumber
+                    ? 'bg-maroon-900 text-white shadow-xs'
+                    : 'bg-cream-100 hover:bg-cream-200 text-charcoal-800'
+                }`}
+              >
+                <span>{uo.orderNumber}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full uppercase ${
+                  order?.orderNumber === uo.orderNumber ? 'bg-white/20 text-white' : 'bg-cream-300 text-charcoal-700'
+                }`}>
+                  {uo.status.replace('_', ' ')}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!order && !loading && !error && (
+        <div className="bg-white p-12 rounded-3xl border border-cream-200 shadow-sm text-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-cream-100 flex items-center justify-center mx-auto text-maroon-900 border border-cream-200">
+            <Search className="w-8 h-8 text-gold-600" />
+          </div>
+          <div className="max-w-md mx-auto space-y-2">
+            <h2 className="font-serif font-black text-xl text-maroon-950">Track Your Order in Real Time</h2>
+            <p className="text-xs text-charcoal-500">
+              Enter your order confirmation number above to monitor live preparation stages, dum cooking time, and rider handoff directly from the outlet kitchen.
+            </p>
+          </div>
+        </div>
+      )}
 
       {loading && (
         <div className="py-20 text-center text-charcoal-500">
@@ -200,8 +302,11 @@ export const OrderTrackingPage: React.FC = () => {
                 </div>
 
                 <h2 className="font-serif font-black text-2xl sm:text-3xl mt-2 text-white">
-                  {order.status === 'COMPLETED' ? 'Order Fulfilled & Delivered' :
-                   order.status === 'READY_FOR_PICKUP' ? 'Packed & Hot at Counter' :
+                  {order.status === 'DELIVERED' || order.status === 'COMPLETED' ? 'Feast Delivered & Enjoyed' :
+                   order.status === 'OUT_FOR_DELIVERY' ? 'Rider is Out for Delivery' :
+                   order.status === 'PICKED_UP' ? 'Rider Picked Up Order from Kitchen' :
+                   order.status === 'ASSIGNED' || order.status === 'ACCEPTED' ? 'Delivery Partner Assigned & En Route' :
+                   order.status === 'READY_FOR_PICKUP' || order.status === 'READY' ? 'Packed Hot & Ready at Outlet' :
                    order.status === 'PREPARING' ? 'Slow Dum Preparation Active' :
                    order.status === 'CONFIRMED' ? 'Order Accepted by Kitchen' : 'Order Placed with Kitchen'}
                 </h2>
@@ -283,6 +388,56 @@ export const OrderTrackingPage: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Party Banquet Feast Banner if applicable */}
+          {(order.orderType === 'PARTY_BULK' || order.partyDetails) && (
+            <div className="bg-gradient-to-r from-amber-50 to-gold-50 p-5 rounded-3xl border border-gold-300 shadow-xs flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-gradient-to-br from-amber-500 to-gold-600 text-charcoal-950 rounded-2xl shadow-xs">
+                  <Sparkles className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <span className="font-serif font-black text-base text-maroon-950 block">Royal Bulk & Party Feast</span>
+                  <span className="text-xs text-charcoal-600">
+                    {order.partyDetails?.guestCount || 25} Guests • Event: {order.partyDetails?.eventDate || 'Confirmed'} at {order.partyDetails?.eventTime || '19:30'}
+                  </span>
+                </div>
+              </div>
+              <span className="px-3 py-1 bg-amber-500/20 text-amber-900 border border-amber-400 font-bold text-xs rounded-xl">
+                Bulk Deg Dum
+              </span>
+            </div>
+          )}
+
+          {/* Assigned Delivery Partner Card */}
+          {order.deliveryStaff && (
+            <div className="bg-white p-5 rounded-3xl border border-emerald-200 shadow-xs flex items-center justify-between">
+              <div className="flex items-center space-x-3.5">
+                <div className="p-3 bg-emerald-100 text-emerald-800 rounded-2xl">
+                  <Bike className="w-6 h-6 text-emerald-700" />
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-emerald-700 tracking-wider block">
+                    Assigned Delivery Partner ({order.status.replace('_', ' ')})
+                  </span>
+                  <span className="font-serif font-black text-base text-charcoal-950 block">
+                    {order.deliveryStaff.name}
+                  </span>
+                  <span className="text-xs text-charcoal-500 font-mono">
+                    {order.deliveryStaff.phone}
+                  </span>
+                </div>
+              </div>
+
+              <a
+                href={`tel:${order.deliveryStaff.phone}`}
+                className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs flex items-center space-x-1.5 transition-all"
+              >
+                <Phone className="w-3.5 h-3.5" />
+                <span>Call Rider</span>
+              </a>
+            </div>
+          )}
 
           {/* Order Details & Summary Card */}
           <div className="bg-white p-6 rounded-3xl border border-cream-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-8">

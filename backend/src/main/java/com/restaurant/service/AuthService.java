@@ -24,6 +24,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final OutletStaffRepository outletStaffRepository;
+    private final OutletRepository outletRepository;
     private final LoyaltyAccountRepository loyaltyAccountRepository;
     private final CustomerMarketingPreferenceRepository marketingPreferenceRepository;
     private final PasswordEncoder passwordEncoder;
@@ -34,6 +35,7 @@ public class AuthService {
                        UserRepository userRepository,
                        RoleRepository roleRepository,
                        OutletStaffRepository outletStaffRepository,
+                       OutletRepository outletRepository,
                        LoyaltyAccountRepository loyaltyAccountRepository,
                        CustomerMarketingPreferenceRepository marketingPreferenceRepository,
                        PasswordEncoder passwordEncoder,
@@ -43,6 +45,7 @@ public class AuthService {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.outletStaffRepository = outletStaffRepository;
+        this.outletRepository = outletRepository;
         this.loyaltyAccountRepository = loyaltyAccountRepository;
         this.marketingPreferenceRepository = marketingPreferenceRepository;
         this.passwordEncoder = passwordEncoder;
@@ -53,11 +56,23 @@ public class AuthService {
     @Transactional
     public AuthResponse login(AuthRequest request) {
         Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+                new UsernamePasswordAuthenticationToken(request.getEmail().trim(), request.getPassword())
         );
 
-        SecurityContextHolder.getContext().setAuthentication(authentication);
         UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
+
+        // Validate Selected Role matches account's actual role
+        if (request.getSelectedRole() != null && !request.getSelectedRole().trim().isEmpty()) {
+            String selectedRole = request.getSelectedRole().trim().toUpperCase();
+            String userRole = userPrincipal.getRole() != null ? userPrincipal.getRole().toUpperCase() : "";
+            if (!userRole.equals(selectedRole)) {
+                throw new org.springframework.security.authentication.BadCredentialsException(
+                        "These credentials are not authorized for the selected role (" + formatRoleName(selectedRole) + ")."
+                );
+            }
+        }
+
+        SecurityContextHolder.getContext().setAuthentication(authentication);
         String jwt = jwtUtils.generateJwtToken(authentication);
 
         Integer loyaltyPoints = 0;
@@ -65,6 +80,10 @@ public class AuthService {
         if (loyaltyOpt.isPresent()) {
             loyaltyPoints = loyaltyOpt.get().getPointsBalance();
         }
+
+        auditLogService.log(userPrincipal.getId(), userPrincipal.getName(), userPrincipal.getRole(),
+                "USER_LOGIN", "USER", userPrincipal.getId().toString(),
+                "User signed in successfully as " + userPrincipal.getRole());
 
         return new AuthResponse(
                 jwt,
@@ -78,45 +97,83 @@ public class AuthService {
         );
     }
 
+    private String formatRoleName(String role) {
+        if (role == null) return "";
+        switch (role.toUpperCase()) {
+            case "CUSTOMER": return "Customer";
+            case "KITCHEN_STAFF": return "Kitchen Staff";
+            case "OUTLET_MANAGER": return "Outlet Manager";
+            case "CENTRAL_ADMIN": return "Central Admin";
+            case "DELIVERY_STAFF": return "Delivery Staff";
+            case "CATERING_MANAGER": return "Kitchen Staff";
+            default: return role;
+        }
+    }
+
     @Transactional
     public AuthResponse register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new IllegalArgumentException("Error: Email is already registered!");
         }
 
-        Role customerRole = roleRepository.findByName("CUSTOMER")
-                .orElseThrow(() -> new IllegalStateException("CUSTOMER role not found in system"));
+        // Determine requested role
+        final String targetRoleName = (request.getRole() != null && !request.getRole().trim().isEmpty())
+                ? request.getRole().trim().toUpperCase()
+                : "CUSTOMER";
+
+        Role assignedRole = roleRepository.findByName(targetRoleName)
+                .orElseThrow(() -> new IllegalArgumentException("Error: Role '" + targetRoleName + "' not recognized in system."));
 
         User user = new User();
         user.setName(request.getName());
-        user.setEmail(request.getEmail());
+        user.setEmail(request.getEmail().trim());
         user.setPhone(request.getPhone());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
-        user.setRole(customerRole);
+        user.setRole(assignedRole);
         user.setIsActive(true);
         User savedUser = userRepository.save(user);
 
-        // Create initial loyalty account with 50 bonus welcome points
-        LoyaltyAccount loyaltyAccount = new LoyaltyAccount();
-        loyaltyAccount.setUser(savedUser);
-        loyaltyAccount.setPointsBalance(50);
-        loyaltyAccount.setLifetimePointsEarned(50);
-        loyaltyAccount.setTier("BRONZE");
-        loyaltyAccountRepository.save(loyaltyAccount);
+        Long assignedOutletId = null;
+        if ("KITCHEN_STAFF".equals(targetRoleName) || "OUTLET_MANAGER".equals(targetRoleName) || "DELIVERY_STAFF".equals(targetRoleName)) {
+            // Assign outlet (default to outlet 1 - Kondapur if not provided)
+            Long targetOutletId = request.getOutletId() != null ? request.getOutletId() : 1L;
+            Optional<Outlet> outletOpt = outletRepository.findById(targetOutletId);
+            if (outletOpt.isPresent()) {
+                OutletStaff staff = new OutletStaff();
+                staff.setUser(savedUser);
+                staff.setOutlet(outletOpt.get());
+                staff.setRoleType(targetRoleName);
+                outletStaffRepository.save(staff);
+                assignedOutletId = outletOpt.get().getId();
+            }
+        }
 
-        // Save DPDP Act marketing preferences
-        CustomerMarketingPreference preferences = new CustomerMarketingPreference();
-        preferences.setUser(savedUser);
-        preferences.setEmailPromotions(Boolean.TRUE.equals(request.getEmailPromotions()));
-        preferences.setSmsPromotions(Boolean.TRUE.equals(request.getSmsPromotions()));
-        preferences.setWhatsappUpdates(Boolean.TRUE.equals(request.getWhatsappUpdates()));
-        marketingPreferenceRepository.save(preferences);
+        Integer loyaltyPoints = 0;
+        if ("CUSTOMER".equals(targetRoleName)) {
+            // Create initial loyalty account with 50 bonus welcome points
+            LoyaltyAccount loyaltyAccount = new LoyaltyAccount();
+            loyaltyAccount.setUser(savedUser);
+            loyaltyAccount.setPointsBalance(50);
+            loyaltyAccount.setLifetimePointsEarned(50);
+            loyaltyAccount.setTier("BRONZE");
+            loyaltyAccountRepository.save(loyaltyAccount);
+            loyaltyPoints = 50;
+
+            // Save DPDP Act marketing preferences
+            CustomerMarketingPreference preferences = new CustomerMarketingPreference();
+            preferences.setUser(savedUser);
+            preferences.setEmailPromotions(Boolean.TRUE.equals(request.getEmailPromotions()));
+            preferences.setSmsPromotions(Boolean.TRUE.equals(request.getSmsPromotions()));
+            preferences.setWhatsappUpdates(Boolean.TRUE.equals(request.getWhatsappUpdates()));
+            marketingPreferenceRepository.save(preferences);
+        }
 
         // Audit log
-        auditLogService.log(savedUser.getId(), savedUser.getName(), "CUSTOMER", "USER_REGISTERED", "USER", savedUser.getId().toString(), "Customer registered with phone: " + savedUser.getPhone());
+        auditLogService.log(savedUser.getId(), savedUser.getName(), targetRoleName, "USER_REGISTERED", "USER",
+                savedUser.getId().toString(), formatRoleName(targetRoleName) + " registered with phone: " + savedUser.getPhone());
 
         // Authenticate & create JWT
-        UserPrincipal userPrincipal = UserPrincipal.create(savedUser, null);
+        UserPrincipal userPrincipal = UserPrincipal.create(savedUser, assignedOutletId);
         String jwt = jwtUtils.generateTokenFromUser(userPrincipal);
 
         return new AuthResponse(
@@ -125,9 +182,9 @@ public class AuthService {
                 savedUser.getName(),
                 savedUser.getEmail(),
                 savedUser.getPhone(),
-                "CUSTOMER",
-                null,
-                50
+                targetRoleName,
+                assignedOutletId,
+                loyaltyPoints
         );
     }
 

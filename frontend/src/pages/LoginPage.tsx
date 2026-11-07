@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { 
   Flame, 
   Lock, 
@@ -14,17 +14,47 @@ import {
   Users,
   ChefHat,
   BarChart3,
-  Calendar
+  Bike
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 
+type RoleType = 'CUSTOMER' | 'KITCHEN_STAFF' | 'OUTLET_MANAGER' | 'CENTRAL_ADMIN' | 'DELIVERY_STAFF';
+
+const ROLES: { id: RoleType; label: string; icon: React.FC<any>; color: string; desc: string }[] = [
+  { id: 'CUSTOMER', label: 'Customer', icon: Users, color: 'text-blue-600', desc: 'Order Biryani & Track' },
+  { id: 'KITCHEN_STAFF', label: 'Kitchen Staff', icon: ChefHat, color: 'text-amber-600', desc: 'Kitchen Display & Feasts' },
+  { id: 'OUTLET_MANAGER', label: 'Outlet Manager', icon: BarChart3, color: 'text-purple-600', desc: 'Outlet & Rider Dispatch' },
+  { id: 'CENTRAL_ADMIN', label: 'Central Admin', icon: ShieldCheck, color: 'text-red-600', desc: 'HQ Analytics & Control' },
+  { id: 'DELIVERY_STAFF', label: 'Delivery Staff', icon: Bike, color: 'text-emerald-600', desc: 'Active Orders & Dispatch' },
+];
+
 export const LoginPage: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+
+  const getInitialRole = (): RoleType => {
+    const roleParam = searchParams.get('role') || (location.state as any)?.role;
+    if (roleParam && ROLES.some(r => r.id === roleParam.toUpperCase())) {
+      return roleParam.toUpperCase() as RoleType;
+    }
+    return 'CUSTOMER';
+  };
+
+  const [selectedRole, setSelectedRole] = useState<RoleType>(getInitialRole);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Sync role if query parameter changes
+  useEffect(() => {
+    const roleParam = searchParams.get('role');
+    if (roleParam && ROLES.some(r => r.id === roleParam.toUpperCase())) {
+      setSelectedRole(roleParam.toUpperCase() as RoleType);
+    }
+  }, [searchParams]);
 
   // Forgot / Reset Password state
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -40,7 +70,7 @@ export const LoginPage: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const executeLogin = async (loginEmail: string, loginPass: string) => {
+  const executeLogin = async (loginEmail: string, loginPass: string, roleToVerify: RoleType) => {
     setLoading(true);
     setError(null);
 
@@ -48,6 +78,7 @@ export const LoginPage: React.FC = () => {
       const res = await api.post('/auth/login', {
         email: loginEmail.trim(),
         password: loginPass,
+        selectedRole: roleToVerify,
       });
 
       const { token, id, name, role, outletId, loyaltyPoints } = res.data;
@@ -64,8 +95,11 @@ export const LoginPage: React.FC = () => {
         case 'CENTRAL_ADMIN':
           navigate('/admin');
           break;
+        case 'DELIVERY_STAFF':
+          navigate('/delivery');
+          break;
         case 'CATERING_MANAGER':
-          navigate('/catering');
+          navigate('/kitchen');
           break;
         default:
           navigate('/');
@@ -79,13 +113,12 @@ export const LoginPage: React.FC = () => {
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    executeLogin(email, password);
+    executeLogin(email, password, selectedRole);
   };
 
-  const handleRoleSelect = (roleEmail: string) => {
-    setEmail(roleEmail);
-    setPassword('password123');
-    executeLogin(roleEmail, 'password123');
+  const handleRoleSelect = (roleId: RoleType) => {
+    setSelectedRole(roleId);
+    setError(null);
   };
 
   const handleRequestResetToken = async (e: React.FormEvent) => {
@@ -158,71 +191,72 @@ export const LoginPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Role Quick Sign-In for All 5 Portals */}
+        {/* Role Selector (All 5 System Roles) */}
         <div className="bg-cream-100 p-4 rounded-3xl border border-cream-200 space-y-2.5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-charcoal-600 block text-center">
-            Role Quick Sign-In (All 5 Roles)
-          </span>
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-charcoal-700">
+              Select Login Role
+            </span>
+            <span className="text-[10px] text-charcoal-500 font-medium">
+              Click to select account type
+            </span>
+          </div>
           <div className="grid grid-cols-2 gap-2 text-xs">
-            <button
-              type="button"
-              onClick={() => handleRoleSelect('customer@hyderabadhouse.com')}
-              className={`p-2.5 bg-white hover:bg-cream-50 border rounded-xl font-semibold text-charcoal-800 flex items-center space-x-2 shadow-2xs transition-all ${
-                email === 'customer@hyderabadhouse.com' ? 'border-maroon-800 ring-2 ring-maroon-800/20' : 'border-cream-300 hover:border-maroon-800'
-              }`}
-            >
-              <Users className="w-4 h-4 text-blue-600 flex-shrink-0" />
-              <span className="truncate">Customer</span>
-            </button>
+            {ROLES.slice(0, 4).map((role) => {
+              const Icon = role.icon;
+              const isSelected = selectedRole === role.id;
+              return (
+                <button
+                  key={role.id}
+                  type="button"
+                  onClick={() => handleRoleSelect(role.id)}
+                  className={`p-2.5 rounded-xl font-semibold flex items-center space-x-2 transition-all ${
+                    isSelected
+                      ? 'bg-maroon-900 text-white shadow-md ring-2 ring-gold-400 border border-gold-400'
+                      : 'bg-white hover:bg-cream-50 text-charcoal-800 border border-cream-300'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 flex-shrink-0 ${isSelected ? 'text-gold-300' : role.color}`} />
+                  <span className="truncate">{role.label}</span>
+                </button>
+              );
+            })}
 
-            <button
-              type="button"
-              onClick={() => handleRoleSelect('kitchen.kondapur@hyderabadhouse.com')}
-              className={`p-2.5 bg-white hover:bg-cream-50 border rounded-xl font-semibold text-charcoal-800 flex items-center space-x-2 shadow-2xs transition-all ${
-                email === 'kitchen.kondapur@hyderabadhouse.com' ? 'border-maroon-800 ring-2 ring-maroon-800/20' : 'border-cream-300 hover:border-maroon-800'
-              }`}
-            >
-              <ChefHat className="w-4 h-4 text-amber-600 flex-shrink-0" />
-              <span className="truncate">Kitchen Staff</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleRoleSelect('manager.kondapur@hyderabadhouse.com')}
-              className={`p-2.5 bg-white hover:bg-cream-50 border rounded-xl font-semibold text-charcoal-800 flex items-center space-x-2 shadow-2xs transition-all ${
-                email === 'manager.kondapur@hyderabadhouse.com' ? 'border-maroon-800 ring-2 ring-maroon-800/20' : 'border-cream-300 hover:border-maroon-800'
-              }`}
-            >
-              <BarChart3 className="w-4 h-4 text-purple-600 flex-shrink-0" />
-              <span className="truncate">Outlet Manager</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleRoleSelect('admin@hyderabadhouse.com')}
-              className={`p-2.5 bg-white hover:bg-cream-50 border rounded-xl font-semibold text-charcoal-800 flex items-center space-x-2 shadow-2xs transition-all ${
-                email === 'admin@hyderabadhouse.com' ? 'border-maroon-800 ring-2 ring-maroon-800/20' : 'border-cream-300 hover:border-maroon-800'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4 text-red-600 flex-shrink-0" />
-              <span className="truncate">Central Admin</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleRoleSelect('catering@hyderabadhouse.com')}
-              className={`col-span-2 p-2.5 bg-white hover:bg-cream-50 border rounded-xl font-semibold text-charcoal-800 flex items-center justify-center space-x-2 shadow-2xs transition-all ${
-                email === 'catering@hyderabadhouse.com' ? 'border-maroon-800 ring-2 ring-maroon-800/20' : 'border-cream-300 hover:border-maroon-800'
-              }`}
-            >
-              <Calendar className="w-4 h-4 text-gold-600 flex-shrink-0" />
-              <span>Catering Manager</span>
-            </button>
+            {/* Delivery Staff spans 2 columns */}
+            {(() => {
+              const delivery = ROLES[4];
+              const Icon = delivery.icon;
+              const isSelected = selectedRole === delivery.id;
+              return (
+                <button
+                  type="button"
+                  onClick={() => handleRoleSelect(delivery.id)}
+                  className={`col-span-2 p-2.5 rounded-xl font-semibold flex items-center justify-center space-x-2 transition-all ${
+                    isSelected
+                      ? 'bg-maroon-900 text-white shadow-md ring-2 ring-gold-400 border border-gold-400'
+                      : 'bg-white hover:bg-cream-50 text-charcoal-800 border border-cream-300'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 flex-shrink-0 ${isSelected ? 'text-gold-300' : delivery.color}`} />
+                  <span>{delivery.label}</span>
+                </button>
+              );
+            })()}
           </div>
         </div>
 
         {/* Regular Secure Login Form */}
         <form onSubmit={handleLoginSubmit} className="bg-white p-6 sm:p-8 rounded-3xl border border-cream-200 shadow-xl space-y-4">
+          {/* Active Role Indicator */}
+          <div className="flex items-center justify-between px-3.5 py-2.5 bg-cream-50 rounded-xl border border-cream-200">
+            <div className="flex items-center space-x-2">
+              <span className="text-[11px] text-charcoal-500 font-medium">Signing in as:</span>
+              <span className="text-xs font-bold text-maroon-950 bg-white px-2.5 py-0.5 rounded-lg border border-cream-200 shadow-2xs">
+                {ROLES.find(r => r.id === selectedRole)?.label}
+              </span>
+            </div>
+            <span className="text-[10px] text-charcoal-400 font-medium hidden sm:inline">Role verified by backend</span>
+          </div>
           <div>
             <label className="block text-xs font-bold text-charcoal-700 mb-1">Email Address</label>
             <div className="relative">
@@ -291,9 +325,13 @@ export const LoginPage: React.FC = () => {
           </button>
 
           <div className="pt-2 text-center text-xs text-charcoal-600">
-            <span>Don't have a customer account? </span>
-            <Link to="/register" className="font-bold text-maroon-900 hover:underline">
-              Create an account
+            <span>Don't have an account? </span>
+            <Link 
+              to={`/register?role=${selectedRole}`}
+              state={{ role: selectedRole }}
+              className="font-bold text-maroon-900 hover:underline"
+            >
+              Create {ROLES.find(r => r.id === selectedRole)?.label} Account
             </Link>
           </div>
         </form>

@@ -5,6 +5,8 @@ import com.restaurant.dto.WorkloadUpdateRequest;
 import com.restaurant.entity.Notification;
 import com.restaurant.entity.Order;
 import com.restaurant.entity.Outlet;
+import com.restaurant.entity.User;
+import com.restaurant.repository.OutletStaffRepository;
 import com.restaurant.security.UserPrincipal;
 import com.restaurant.service.MenuService;
 import com.restaurant.service.NotificationService;
@@ -26,15 +28,18 @@ public class OutletManagerController {
     private final OutletService outletService;
     private final MenuService menuService;
     private final NotificationService notificationService;
+    private final OutletStaffRepository outletStaffRepository;
 
     public OutletManagerController(OrderService orderService,
                                    OutletService outletService,
                                    MenuService menuService,
-                                   NotificationService notificationService) {
+                                   NotificationService notificationService,
+                                   OutletStaffRepository outletStaffRepository) {
         this.orderService = orderService;
         this.outletService = outletService;
         this.menuService = menuService;
         this.notificationService = notificationService;
+        this.outletStaffRepository = outletStaffRepository;
     }
 
     @GetMapping("/dashboard")
@@ -67,7 +72,7 @@ public class OutletManagerController {
             }
         }
 
-        double avgPrepTime = prepOrdersCount > 0 ? (double) totalPrepTime / prepOrdersCount : outlet.getMinPrepTimeMinutes();
+        double avgPrepTime = prepOrdersCount > 0 ? (double) totalPrepTime / prepOrdersCount : 0.0;
 
         Map<String, Object> summary = new HashMap<>();
         summary.put("outlet", outlet);
@@ -77,8 +82,40 @@ public class OutletManagerController {
         summary.put("totalSales", totalSales);
         summary.put("avgPrepTimeMinutes", Math.round(avgPrepTime * 10.0) / 10.0);
         summary.put("orders", orders);
+        summary.put("availableDeliveryStaff", outletStaffRepository.findAvailableDeliveryStaffByOutletId(targetOutletId));
 
         return ResponseEntity.ok(summary);
+    }
+
+    @PostMapping("/orders/{orderId}/assign-delivery")
+    public ResponseEntity<?> assignDelivery(@PathVariable Long orderId,
+                                            @AuthenticationPrincipal UserPrincipal userPrincipal,
+                                            @RequestBody Map<String, Long> body) {
+        try {
+            Long deliveryStaffId = body.get("deliveryStaffId");
+            if (deliveryStaffId == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "deliveryStaffId is required"));
+            }
+            Long managerId = userPrincipal != null ? userPrincipal.getId() : 1L;
+            Order updated = orderService.assignDeliveryStaff(orderId, deliveryStaffId, managerId);
+            return ResponseEntity.ok(updated);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/delivery-staff")
+    public ResponseEntity<?> getDeliveryStaff(@RequestParam(required = false, defaultValue = "1") Long outletId) {
+        try {
+            List<User> available = outletStaffRepository.findAvailableDeliveryStaffByOutletId(outletId);
+            List<User> allStaff = outletStaffRepository.findAllDeliveryStaffByOutletId(outletId);
+            Map<String, Object> res = new HashMap<>();
+            res.put("available", available);
+            res.put("all", allStaff);
+            return ResponseEntity.ok(res);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
     @PatchMapping("/inventory/{menuItemId}")

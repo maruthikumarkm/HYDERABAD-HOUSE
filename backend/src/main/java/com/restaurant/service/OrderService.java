@@ -32,6 +32,8 @@ public class OrderService {
     private final LoyaltyAccountRepository loyaltyAccountRepository;
     private final LoyaltyTransactionRepository loyaltyTransactionRepository;
     private final NotificationRepository notificationRepository;
+    private final UserRepository userRepository;
+    private final PartyOrderDetailRepository partyOrderDetailRepository;
     private final AiService aiService;
     private final WebSocketService webSocketService;
     private final AuditLogService auditLogService;
@@ -48,6 +50,8 @@ public class OrderService {
                         LoyaltyAccountRepository loyaltyAccountRepository,
                         LoyaltyTransactionRepository loyaltyTransactionRepository,
                         NotificationRepository notificationRepository,
+                        UserRepository userRepository,
+                        PartyOrderDetailRepository partyOrderDetailRepository,
                         AiService aiService,
                         WebSocketService webSocketService,
                         AuditLogService auditLogService,
@@ -63,14 +67,27 @@ public class OrderService {
         this.loyaltyAccountRepository = loyaltyAccountRepository;
         this.loyaltyTransactionRepository = loyaltyTransactionRepository;
         this.notificationRepository = notificationRepository;
+        this.userRepository = userRepository;
+        this.partyOrderDetailRepository = partyOrderDetailRepository;
         this.aiService = aiService;
         this.webSocketService = webSocketService;
         this.auditLogService = auditLogService;
         this.paymentGatewayService = paymentGatewayService;
     }
 
-    @Transactional
-    public Order createOrder(User customer, OrderCreateRequest request) {
+    public static class CalculatedOrder {
+        public Outlet outlet;
+        public List<OrderItem> preparedItems;
+        public BigDecimal subtotal;
+        public BigDecimal taxAmount;
+        public BigDecimal deliveryFee;
+        public BigDecimal discountAmount;
+        public BigDecimal loyaltyDiscount;
+        public BigDecimal netTotal;
+        public int promisedPrepTime;
+    }
+
+    public CalculatedOrder calculateOrder(User customer, OrderCreateRequest request) {
         Outlet outlet = outletRepository.findById(request.getOutletId())
                 .orElseThrow(() -> new NoSuchElementException("Outlet not found with id: " + request.getOutletId()));
 
@@ -78,7 +95,6 @@ public class OrderService {
             throw new IllegalStateException("Selected outlet is currently inactive.");
         }
 
-        // 1. Validate stock and calculate subtotal
         BigDecimal subtotal = BigDecimal.ZERO;
         int totalQuantity = 0;
         String primaryCategory = "Chicken Biryani";
@@ -89,7 +105,6 @@ public class OrderService {
             MenuItem menuItem = menuItemRepository.findById(itemReq.getMenuItemId())
                     .orElseThrow(() -> new NoSuchElementException("Menu item not found: " + itemReq.getMenuItemId()));
 
-            // Outlet-specific stock check
             Optional<OutletMenu> om = outletMenuRepository.findByOutletIdAndMenuItemId(outlet.getId(), menuItem.getId());
             if (om.isPresent()) {
                 if (!Boolean.TRUE.equals(om.get().getIsAvailable())) {
@@ -120,28 +135,22 @@ public class OrderService {
             preparedItems.add(orderItem);
         }
 
-        // Minimum order amount check
         if (subtotal.compareTo(outlet.getMinOrderAmount()) < 0) {
             throw new IllegalArgumentException("Minimum order amount for " + outlet.getName() + " is ₹" + outlet.getMinOrderAmount());
         }
 
-        // 2. GST (5% included in Hyderabadi restaurant pricing or broken down)
-        // GST = subtotal * 5 / 105
         BigDecimal taxAmount = subtotal.multiply(new BigDecimal("5.00"))
                 .divide(new BigDecimal("105.00"), 2, RoundingMode.HALF_UP);
 
-        // Delivery fee
         BigDecimal deliveryFee = "DELIVERY".equalsIgnoreCase(request.getOrderType())
                 ? (subtotal.compareTo(new BigDecimal("499.00")) >= 0 ? BigDecimal.ZERO : new BigDecimal("40.00"))
                 : BigDecimal.ZERO;
 
-        // 3. Coupon discount
         BigDecimal discountAmount = BigDecimal.ZERO;
         if (request.getCouponCode() != null && !request.getCouponCode().trim().isEmpty()) {
             discountAmount = calculateCouponDiscount(request.getCouponCode().trim(), subtotal);
         }
 
-        // 4. Loyalty points redemption (1 point = ₹1, max 50% of subtotal)
         BigDecimal loyaltyDiscount = BigDecimal.ZERO;
         if (request.getPointsToRedeem() != null && request.getPointsToRedeem() > 0) {
             loyaltyDiscount = redeemLoyaltyPoints(customer.getId(), request.getPointsToRedeem(), subtotal);
@@ -152,7 +161,6 @@ public class OrderService {
             netTotal = BigDecimal.ZERO;
         }
 
-        // 5. AI Preparation Time Prediction
         long pendingOrdersCount = orderRepository.countPendingOrdersByOutlet(outlet.getId());
         int aiPredictedPrepTime = aiService.predictPreparationTime(
                 outlet.getId(),
@@ -162,86 +170,230 @@ public class OrderService {
                 (int) pendingOrdersCount
         );
 
-        // Business Rule: promised prep time is maximum of AI prediction and outlet minimum prep time
         int promisedPrepTime = Math.max(aiPredictedPrepTime, outlet.getMinPrepTimeMinutes());
 
-        // 6. Create Order Entity
+        CalculatedOrder co = new CalculatedOrder();
+        co.outlet = outlet;
+        co.preparedItems = preparedItems;
+        co.subtotal = subtotal;
+        co.taxAmount = taxAmount;
+        co.deliveryFee = deliveryFee;
+        co.discountAmount = discountAmount;
+        co.loyaltyDiscount = loyaltyDiscount;
+        co.netTotal = netTotal;
+        co.promisedPrepTime = promisedPrepTime;
+        return co;
+    }
+
+    public BigDecimal calculateOrderAmount(User customer, OrderCreateRequest request) {
+        CalculatedOrder co = calculateOrder(customer, request);
+        return co.netTotal;
+    }
+
+    @Transactional
+    public Order createOrder(User customer, OrderCreateRequest request) {
+        CalculatedOrder co = calculateOrder(customer, request);
+
         Order order = new Order();
         String orderNumber = "WEB-" + (100000 + new Random().nextInt(900000));
         order.setOrderNumber(orderNumber);
         order.setCustomer(customer);
-        order.setOutlet(outlet);
+        order.setOutlet(co.outlet);
         order.setOrderType(request.getOrderType() != null ? request.getOrderType() : "DELIVERY");
         order.setStatus("PLACED");
-        order.setSubtotal(subtotal);
-        order.setTaxAmount(taxAmount);
-        order.setDeliveryFee(deliveryFee);
-        order.setDiscountAmount(discountAmount);
-        order.setLoyaltyDiscount(loyaltyDiscount);
-        order.setTotalAmount(netTotal);
-        order.setPaymentStatus("PAID"); // Mock payment is immediately successful
+        order.setSubtotal(co.subtotal);
+        order.setTaxAmount(co.taxAmount);
+        order.setDeliveryFee(co.deliveryFee);
+        order.setDiscountAmount(co.discountAmount);
+        order.setLoyaltyDiscount(co.loyaltyDiscount);
+        order.setTotalAmount(co.netTotal);
+        order.setPaymentStatus("PAID");
         order.setPaymentMethod(request.getPaymentMethod() != null ? request.getPaymentMethod() : "UPI");
         order.setDeliveryAddress(request.getDeliveryAddress());
         order.setCustomerName(request.getCustomerName() != null ? request.getCustomerName() : customer.getName());
         order.setCustomerPhone(request.getCustomerPhone() != null ? request.getCustomerPhone() : customer.getPhone());
         order.setSpecialInstructions(request.getSpecialInstructions());
-        order.setPromisedPrepTimeMinutes(promisedPrepTime);
+        order.setPromisedPrepTimeMinutes(co.promisedPrepTime);
         order.setPlacedAt(LocalDateTime.now());
-        order.setEstimatedReadyTime(LocalDateTime.now().plusMinutes(promisedPrepTime));
+        order.setEstimatedReadyTime(LocalDateTime.now().plusMinutes(co.promisedPrepTime));
 
-        for (OrderItem oi : preparedItems) {
+        for (OrderItem oi : co.preparedItems) {
             oi.setOrder(order);
         }
-        order.setItems(preparedItems);
+        order.setItems(co.preparedItems);
+
+        if (Boolean.TRUE.equals(request.getIsPartyOrder())) {
+            order.setOrderType("PARTY_BULK");
+            PartyOrderDetail pod = new PartyOrderDetail();
+            pod.setOrder(order);
+            pod.setEventType(request.getEventType() != null ? request.getEventType() : "Party Feast");
+            if (request.getEventDate() != null && !request.getEventDate().trim().isEmpty()) {
+                try {
+                    pod.setEventDate(java.time.LocalDate.parse(request.getEventDate()));
+                } catch (Exception ex) {
+                    pod.setEventDate(java.time.LocalDate.now().plusDays(2));
+                }
+            } else {
+                pod.setEventDate(java.time.LocalDate.now().plusDays(2));
+            }
+            pod.setEventTime(request.getEventTime() != null ? request.getEventTime() : "19:30");
+            pod.setGuestCount(request.getGuestCount() != null ? request.getGuestCount() : 25);
+            pod.setContactName(order.getCustomerName());
+            pod.setContactPhone(order.getCustomerPhone());
+            pod.setDeliveryAddress(order.getDeliveryAddress());
+            pod.setSpecialInstructions(order.getSpecialInstructions());
+            order.setPartyDetails(pod);
+        }
 
         Order savedOrder = orderRepository.save(order);
 
-        // 7. Payment Record via PaymentGatewayService abstraction
-        PaymentGatewayService.PaymentResult payResult = paymentGatewayService.processPayment(
-                savedOrder.getId(), savedOrder.getOrderNumber(), netTotal, savedOrder.getPaymentMethod(), savedOrder.getCustomerPhone()
-        );
-
         Payment payment = new Payment();
         payment.setOrder(savedOrder);
-        payment.setTransactionRef(payResult.getTransactionRef());
+        payment.setCustomerId(customer.getId());
+        payment.setTransactionRef("TXN_" + System.currentTimeMillis() + "_" + (new Random().nextInt(9000) + 1000));
         payment.setPaymentMethod(savedOrder.getPaymentMethod());
-        payment.setAmount(netTotal);
-        payment.setStatus(payResult.isSuccess() ? "SUCCESS" : "FAILED");
-        payment.setGatewayResponse(payResult.getRawResponse());
+        payment.setAmount(co.netTotal);
+        payment.setStatus("SUCCESS");
+        payment.setGatewayResponse("Direct payment processed");
         paymentRepository.save(payment);
 
-        // 8. Order Status History
         OrderStatusHistory history = new OrderStatusHistory(
                 savedOrder, "PLACED", "Order successfully placed via Hyderabad House Direct Platform", customer.getId()
         );
         statusHistoryRepository.save(history);
 
-        // Audit Trail
         auditLogService.log(customer.getId(), customer.getName(), "CUSTOMER", "ORDER_PLACED", "ORDER",
-                savedOrder.getOrderNumber(), "Placed order for ₹" + netTotal + " at " + outlet.getName());
+                savedOrder.getOrderNumber(), "Placed order for ₹" + co.netTotal + " at " + co.outlet.getName());
 
-        // 9. Award Loyalty Points (10% of order total earned as points)
-        awardLoyaltyPoints(customer.getId(), savedOrder.getId(), netTotal);
+        awardLoyaltyPoints(customer.getId(), savedOrder.getId(), co.netTotal);
 
-        // 10. Notifications
         Notification notif = new Notification(
                 customer.getId(),
                 savedOrder.getId(),
-                outlet.getId(),
+                co.outlet.getId(),
                 "Order Placed Successfully (" + savedOrder.getOrderNumber() + ")",
-                "Your order has been routed to " + outlet.getName() + ". Estimated preparation: " + promisedPrepTime + " mins.",
+                "Your order has been routed to " + co.outlet.getName() + ". Estimated preparation: " + co.promisedPrepTime + " mins.",
                 "ORDER_PLACED"
         );
         notificationRepository.save(notif);
 
-        // 11. Broadcast Real-time WebSocket Event to Kitchen and Customer!
         Map<String, Object> wsPayload = buildOrderWebSocketPayload(savedOrder);
-        webSocketService.sendToKitchen(outlet.getId(), wsPayload);
+        webSocketService.sendToKitchen(co.outlet.getId(), wsPayload);
         webSocketService.sendToCustomer(savedOrder.getOrderNumber(), wsPayload);
-        webSocketService.sendToOutletManager(outlet.getId(), wsPayload);
+        webSocketService.sendToOutletManager(co.outlet.getId(), wsPayload);
         webSocketService.sendToAdmin(wsPayload);
 
         return savedOrder;
+    }
+
+    @Transactional
+    public Order confirmPhonePeOrder(Payment payment) {
+        if (payment.getOrder() != null) {
+            return payment.getOrder();
+        }
+
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            OrderCreateRequest request = mapper.readValue(payment.getOrderPayload(), OrderCreateRequest.class);
+            User customer = userRepository.findById(payment.getCustomerId())
+                    .orElseThrow(() -> new NoSuchElementException("Customer not found with id: " + payment.getCustomerId()));
+
+            CalculatedOrder co = calculateOrder(customer, request);
+
+            Order order = new Order();
+            String orderNumber = "WEB-" + (100000 + new Random().nextInt(900000));
+            order.setOrderNumber(orderNumber);
+            order.setCustomer(customer);
+            order.setOutlet(co.outlet);
+            order.setOrderType(request.getOrderType() != null ? request.getOrderType() : "DELIVERY");
+            order.setStatus("PLACED");
+            order.setSubtotal(co.subtotal);
+            order.setTaxAmount(co.taxAmount);
+            order.setDeliveryFee(co.deliveryFee);
+            order.setDiscountAmount(co.discountAmount);
+            order.setLoyaltyDiscount(co.loyaltyDiscount);
+            order.setTotalAmount(co.netTotal);
+            order.setPaymentStatus("PAID");
+            order.setPaymentMethod("PHONEPE_UPI");
+            order.setDeliveryAddress(request.getDeliveryAddress());
+            order.setCustomerName(request.getCustomerName() != null ? request.getCustomerName() : customer.getName());
+            order.setCustomerPhone(request.getCustomerPhone() != null ? request.getCustomerPhone() : customer.getPhone());
+            order.setSpecialInstructions(request.getSpecialInstructions());
+            order.setPromisedPrepTimeMinutes(co.promisedPrepTime);
+            order.setPlacedAt(LocalDateTime.now());
+            order.setEstimatedReadyTime(LocalDateTime.now().plusMinutes(co.promisedPrepTime));
+
+            for (OrderItem oi : co.preparedItems) {
+                oi.setOrder(order);
+            }
+            order.setItems(co.preparedItems);
+
+            if (Boolean.TRUE.equals(request.getIsPartyOrder())) {
+                order.setOrderType("PARTY_BULK");
+                PartyOrderDetail pod = new PartyOrderDetail();
+                pod.setOrder(order);
+                pod.setEventType(request.getEventType() != null ? request.getEventType() : "Party Feast");
+                if (request.getEventDate() != null && !request.getEventDate().trim().isEmpty()) {
+                    try {
+                        pod.setEventDate(java.time.LocalDate.parse(request.getEventDate()));
+                    } catch (Exception ex) {
+                        pod.setEventDate(java.time.LocalDate.now().plusDays(2));
+                    }
+                } else {
+                    pod.setEventDate(java.time.LocalDate.now().plusDays(2));
+                }
+                pod.setEventTime(request.getEventTime() != null ? request.getEventTime() : "19:30");
+                pod.setGuestCount(request.getGuestCount() != null ? request.getGuestCount() : 25);
+                pod.setContactName(order.getCustomerName());
+                pod.setContactPhone(order.getCustomerPhone());
+                pod.setDeliveryAddress(order.getDeliveryAddress());
+                pod.setSpecialInstructions(order.getSpecialInstructions());
+                order.setPartyDetails(pod);
+            }
+
+            Order savedOrder = orderRepository.save(order);
+
+            // Link payment to this order
+            payment.setOrder(savedOrder);
+            payment.setStatus("SUCCESS");
+            paymentRepository.save(payment);
+
+            // History
+            OrderStatusHistory history = new OrderStatusHistory(
+                    savedOrder, "PLACED", "Order verified and placed via PhonePe UPI Gateway", customer.getId()
+            );
+            statusHistoryRepository.save(history);
+
+            // Audit
+            auditLogService.log(customer.getId(), customer.getName(), "CUSTOMER", "PHONEPE_PAYMENT_VERIFIED", "ORDER",
+                    savedOrder.getOrderNumber(), "PhonePe transaction " + payment.getMerchantTransactionId() + " verified. Order ₹" + co.netTotal);
+
+            // Award loyalty points
+            awardLoyaltyPoints(customer.getId(), savedOrder.getId(), co.netTotal);
+
+            // Notification
+            Notification notif = new Notification(
+                    customer.getId(),
+                    savedOrder.getId(),
+                    co.outlet.getId(),
+                    "Order Placed Successfully (" + savedOrder.getOrderNumber() + ")",
+                    "Your PhonePe UPI payment was verified. Routed to " + co.outlet.getName() + ".",
+                    "ORDER_PLACED"
+            );
+            notificationRepository.save(notif);
+
+            // Real-time WebSocket to kitchen, customer, manager, admin
+            Map<String, Object> wsPayload = buildOrderWebSocketPayload(savedOrder);
+            webSocketService.sendToKitchen(co.outlet.getId(), wsPayload);
+            webSocketService.sendToCustomer(savedOrder.getOrderNumber(), wsPayload);
+            webSocketService.sendToOutletManager(co.outlet.getId(), wsPayload);
+            webSocketService.sendToAdmin(wsPayload);
+
+            return savedOrder;
+        } catch (Exception e) {
+            logger.error("Error confirming PhonePe order: ", e);
+            throw new RuntimeException("Failed to confirm PhonePe order: " + e.getMessage(), e);
+        }
     }
 
     @Transactional
@@ -250,6 +402,9 @@ public class OrderService {
                 .orElseThrow(() -> new NoSuchElementException("Order not found with id: " + orderId));
 
         String newStatus = request.getStatus().toUpperCase();
+        if ("READY".equals(newStatus)) {
+            newStatus = "READY_FOR_PICKUP";
+        }
         order.setStatus(newStatus);
 
         LocalDateTime now = LocalDateTime.now();
@@ -263,14 +418,37 @@ public class OrderService {
             case "READY_FOR_PICKUP":
                 order.setReadyAt(now);
                 break;
+            case "ASSIGNED":
+                order.setAssignedAt(now);
+                break;
+            case "ACCEPTED":
+                break;
+            case "PICKED_UP":
+                order.setPickedUpAt(now);
+                break;
+            case "OUT_FOR_DELIVERY":
+                order.setOutForDeliveryAt(now);
+                break;
+            case "DELIVERED":
+            case "COMPLETED":
+                order.setDeliveredAt(now);
+                order.setCompletedAt(now);
+                if (order.getDeliveryStaff() != null) {
+                    User staff = order.getDeliveryStaff();
+                    staff.setAvailabilityStatus("AVAILABLE");
+                    userRepository.save(staff);
+                }
+                break;
             case "RIDER_HANDOFF":
                 order.setHandedOffAt(now);
                 break;
-            case "COMPLETED":
-                order.setCompletedAt(now);
-                break;
             case "CANCELLED":
                 order.setCancelledAt(now);
+                if (order.getDeliveryStaff() != null) {
+                    User staff = order.getDeliveryStaff();
+                    staff.setAvailabilityStatus("AVAILABLE");
+                    userRepository.save(staff);
+                }
                 break;
         }
 
@@ -305,6 +483,162 @@ public class OrderService {
         webSocketService.sendToAdmin(wsPayload);
 
         return saved;
+    }
+
+    @Transactional
+    public Order assignDeliveryStaff(Long orderId, Long deliveryStaffId, Long managerUserId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new NoSuchElementException("Order not found with id: " + orderId));
+
+        User deliveryStaff = userRepository.findById(deliveryStaffId)
+                .orElseThrow(() -> new NoSuchElementException("Delivery staff user not found with id: " + deliveryStaffId));
+
+        if (!"DELIVERY_STAFF".equalsIgnoreCase(deliveryStaff.getRole().getName())) {
+            throw new IllegalArgumentException("Selected user is not a delivery staff member");
+        }
+
+        order.setStatus("ASSIGNED");
+        order.setDeliveryStaff(deliveryStaff);
+        order.setAssignedAt(LocalDateTime.now());
+        Order savedOrder = orderRepository.save(order);
+
+        deliveryStaff.setAvailabilityStatus("BUSY");
+        userRepository.save(deliveryStaff);
+
+        OrderStatusHistory history = new OrderStatusHistory(
+                savedOrder, "ASSIGNED", "Assigned to delivery partner " + deliveryStaff.getName() + " (" + deliveryStaff.getPhone() + ")", managerUserId
+        );
+        statusHistoryRepository.save(history);
+
+        auditLogService.log(managerUserId, "Outlet Manager", "OUTLET_MANAGER", "DELIVERY_ASSIGNED", "ORDER",
+                savedOrder.getOrderNumber(), "Assigned to " + deliveryStaff.getName());
+
+        Notification notif = new Notification(
+                savedOrder.getCustomer().getId(),
+                savedOrder.getId(),
+                savedOrder.getOutlet().getId(),
+                "Delivery Partner Assigned (" + savedOrder.getOrderNumber() + ")",
+                deliveryStaff.getName() + " has been assigned to deliver your royal feast.",
+                "ASSIGNED"
+        );
+        notificationRepository.save(notif);
+
+        Notification staffNotif = new Notification(
+                deliveryStaff.getId(),
+                savedOrder.getId(),
+                savedOrder.getOutlet().getId(),
+                "New Order Assigned (" + savedOrder.getOrderNumber() + ")",
+                "Order is ready for pickup at " + savedOrder.getOutlet().getName(),
+                "ASSIGNED"
+        );
+        notificationRepository.save(staffNotif);
+
+        Map<String, Object> wsPayload = buildOrderWebSocketPayload(savedOrder);
+        webSocketService.sendToDelivery(deliveryStaff.getId(), wsPayload);
+        webSocketService.sendToCustomer(savedOrder.getOrderNumber(), wsPayload);
+        webSocketService.sendToKitchen(savedOrder.getOutlet().getId(), wsPayload);
+        webSocketService.sendToOutletManager(savedOrder.getOutlet().getId(), wsPayload);
+        webSocketService.sendToAdmin(wsPayload);
+
+        return savedOrder;
+    }
+
+    @Transactional
+    public Order updateDeliveryStatus(Long orderId, String nextStatus, Long deliveryStaffUserId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new NoSuchElementException("Order not found with id: " + orderId));
+
+        if (order.getDeliveryStaff() == null || !order.getDeliveryStaff().getId().equals(deliveryStaffUserId)) {
+            User caller = userRepository.findById(deliveryStaffUserId).orElse(null);
+            boolean isManagerOrAdmin = caller != null && (
+                    "OUTLET_MANAGER".equalsIgnoreCase(caller.getRole().getName()) ||
+                    "CENTRAL_ADMIN".equalsIgnoreCase(caller.getRole().getName())
+            );
+            if (!isManagerOrAdmin) {
+                throw new IllegalStateException("You are not the assigned delivery partner for this order");
+            }
+        }
+
+        String current = order.getStatus();
+        String target = nextStatus.toUpperCase();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        if ("ACCEPTED".equals(target)) {
+            if (!"ASSIGNED".equals(current)) {
+                throw new IllegalStateException("Order can only be accepted when status is ASSIGNED (current: " + current + ")");
+            }
+            order.setStatus("ACCEPTED");
+        } else if ("PICKED_UP".equals(target)) {
+            if (!"ACCEPTED".equals(current) && !"ASSIGNED".equals(current)) {
+                throw new IllegalStateException("Order must be ACCEPTED before pickup (current: " + current + ")");
+            }
+            order.setStatus("PICKED_UP");
+            order.setPickedUpAt(now);
+        } else if ("OUT_FOR_DELIVERY".equals(target)) {
+            if (!"PICKED_UP".equals(current)) {
+                throw new IllegalStateException("Order must be PICKED_UP before OUT_FOR_DELIVERY (current: " + current + ")");
+            }
+            order.setStatus("OUT_FOR_DELIVERY");
+            order.setOutForDeliveryAt(now);
+        } else if ("DELIVERED".equals(target)) {
+            if (!"OUT_FOR_DELIVERY".equals(current) && !"PICKED_UP".equals(current)) {
+                throw new IllegalStateException("Order must be OUT_FOR_DELIVERY before DELIVERED (current: " + current + ")");
+            }
+            order.setStatus("DELIVERED");
+            order.setDeliveredAt(now);
+            order.setCompletedAt(now);
+
+            if (order.getDeliveryStaff() != null) {
+                User staff = order.getDeliveryStaff();
+                staff.setAvailabilityStatus("AVAILABLE");
+                userRepository.save(staff);
+            }
+        } else {
+            throw new IllegalArgumentException("Unsupported delivery status: " + target);
+        }
+
+        Order savedOrder = orderRepository.save(order);
+
+        OrderStatusHistory history = new OrderStatusHistory(
+                savedOrder, target, "Delivery status updated to " + target, deliveryStaffUserId
+        );
+        statusHistoryRepository.save(history);
+
+        auditLogService.log(deliveryStaffUserId, "Delivery Staff", "DELIVERY_STAFF", "DELIVERY_STATUS_CHANGED", "ORDER",
+                savedOrder.getOrderNumber(), "Order transitioned to " + target);
+
+        Notification notif = new Notification(
+                savedOrder.getCustomer().getId(),
+                savedOrder.getId(),
+                savedOrder.getOutlet().getId(),
+                "Delivery Update: " + target.replace("_", " "),
+                "Your order " + savedOrder.getOrderNumber() + " is now " + target.replace("_", " "),
+                target
+        );
+        notificationRepository.save(notif);
+
+        Map<String, Object> wsPayload = buildOrderWebSocketPayload(savedOrder);
+        if (savedOrder.getDeliveryStaff() != null) {
+            webSocketService.sendToDelivery(savedOrder.getDeliveryStaff().getId(), wsPayload);
+        }
+        webSocketService.sendToCustomer(savedOrder.getOrderNumber(), wsPayload);
+        webSocketService.sendToKitchen(savedOrder.getOutlet().getId(), wsPayload);
+        webSocketService.sendToOutletManager(savedOrder.getOutlet().getId(), wsPayload);
+        webSocketService.sendToAdmin(wsPayload);
+
+        return savedOrder;
+    }
+
+    public List<Order> getOrdersForDeliveryStaff(Long deliveryStaffId) {
+        return orderRepository.findByDeliveryStaffIdOrderByAssignedAtDesc(deliveryStaffId);
+    }
+
+    public List<Order> getPartyOrdersForKitchen(Long outletId) {
+        if (outletId != null) {
+            return orderRepository.findByOutletIdAndOrderTypeOrderByPlacedAtDesc(outletId, "PARTY_BULK");
+        }
+        return orderRepository.findByOrderTypeOrderByPlacedAtDesc("PARTY_BULK");
     }
 
     public Order getOrderByNumber(String orderNumber) {
@@ -476,13 +810,38 @@ public class OrderService {
         map.put("orderType", order.getOrderType());
         map.put("customerName", order.getCustomerName());
         map.put("customerPhone", order.getCustomerPhone());
+        map.put("deliveryAddress", order.getDeliveryAddress());
         map.put("specialInstructions", order.getSpecialInstructions());
         map.put("promisedPrepTimeMinutes", order.getPromisedPrepTimeMinutes());
         map.put("estimatedReadyTime", order.getEstimatedReadyTime());
         map.put("placedAt", order.getPlacedAt());
+        map.put("assignedAt", order.getAssignedAt());
+        map.put("pickedUpAt", order.getPickedUpAt());
+        map.put("outForDeliveryAt", order.getOutForDeliveryAt());
+        map.put("deliveredAt", order.getDeliveredAt());
         map.put("isLate", order.getIsLate());
-        map.put("itemsCount", order.getItems().size());
+        map.put("itemsCount", order.getItems() != null ? order.getItems().size() : 0);
         map.put("items", order.getItems());
+        if (order.getDeliveryStaff() != null) {
+            Map<String, Object> staffMap = new HashMap<>();
+            staffMap.put("id", order.getDeliveryStaff().getId());
+            staffMap.put("name", order.getDeliveryStaff().getName());
+            staffMap.put("phone", order.getDeliveryStaff().getPhone());
+            staffMap.put("availabilityStatus", order.getDeliveryStaff().getAvailabilityStatus());
+            map.put("deliveryStaff", staffMap);
+        }
+        if (order.getPartyDetails() != null) {
+            Map<String, Object> partyMap = new HashMap<>();
+            partyMap.put("eventType", order.getPartyDetails().getEventType());
+            partyMap.put("eventDate", order.getPartyDetails().getEventDate());
+            partyMap.put("eventTime", order.getPartyDetails().getEventTime());
+            partyMap.put("guestCount", order.getPartyDetails().getGuestCount());
+            partyMap.put("contactName", order.getPartyDetails().getContactName());
+            partyMap.put("contactPhone", order.getPartyDetails().getContactPhone());
+            partyMap.put("deliveryAddress", order.getPartyDetails().getDeliveryAddress());
+            partyMap.put("specialInstructions", order.getPartyDetails().getSpecialInstructions());
+            map.put("partyDetails", partyMap);
+        }
         return map;
     }
 }

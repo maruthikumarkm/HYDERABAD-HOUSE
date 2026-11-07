@@ -88,7 +88,7 @@ public class AnalyticsService {
         }
 
         long repeatCustomers = customerOrderFrequency.values().stream().filter(count -> count > 1).count();
-        double avgPrepTime = prepOrdersCount > 0 ? (double) totalPrepMinutes / prepOrdersCount : 25.0;
+        double avgPrepTime = prepOrdersCount > 0 ? (double) totalPrepMinutes / prepOrdersCount : 0.0;
 
         // Outlet performance breakdown
         List<Map<String, Object>> outletPerformance = new ArrayList<>();

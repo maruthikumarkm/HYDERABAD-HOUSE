@@ -30,6 +30,9 @@ public class User {
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 
+    @Column(name = "availability_status", length = 20)
+    private String availabilityStatus = "AVAILABLE"; // AVAILABLE, BUSY, OFFLINE
+
     @Column(name = "reset_password_token", length = 100)
     @com.fasterxml.jackson.annotation.JsonIgnore
     private String resetPasswordToken;
@@ -77,6 +80,9 @@ public class User {
 
     public Boolean getIsActive() { return isActive; }
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+
+    public String getAvailabilityStatus() { return availabilityStatus; }
+    public void setAvailabilityStatus(String availabilityStatus) { this.availabilityStatus = availabilityStatus; }
 
     public String getResetPasswordToken() { return resetPasswordToken; }
     public void setResetPasswordToken(String resetPasswordToken) { this.resetPasswordToken = resetPasswordToken; }

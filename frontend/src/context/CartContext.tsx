@@ -2,6 +2,17 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { CartItem, MenuItem, AddOn, Outlet } from '../types';
 import api from '../services/api';
 
+export interface PartyDetailsState {
+  eventType: string;
+  eventDate: string;
+  eventTime: string;
+  guestCount: number;
+  deliveryAddress: string;
+  specialInstructions?: string;
+  contactName?: string;
+  contactPhone?: string;
+}
+
 interface CartContextType {
   items: CartItem[];
   selectedOutlet: Outlet | null;
@@ -15,10 +26,14 @@ interface CartContextType {
   taxAmount: number;
   deliveryFee: number;
   totalAmount: number;
+  isPartyOrder: boolean;
+  partyDetails: PartyDetailsState | null;
   setSelectedOutlet: (outlet: Outlet) => void;
   setOrderType: (type: 'DELIVERY' | 'PICKUP') => void;
   setIsCartOpen: (open: boolean) => void;
   addItem: (item: MenuItem, quantity: number, portionSize: string, spiceLevel: string, addOns: AddOn[], instructions?: string) => void;
+  addPartyOrderToCart: (partyItems: { menuItem: MenuItem; quantity: number }[], details: PartyDetailsState) => void;
+  setPartyOrderDetails: (details: PartyDetailsState | null) => void;
   removeItem: (index: number) => void;
   updateQuantity: (index: number, quantity: number) => void;
   applyCoupon: (code: string) => Promise<{ success: boolean; message: string }>;
@@ -45,6 +60,48 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [couponCode, setCouponCode] = useState('');
   const [couponDiscount, setCouponDiscount] = useState(0);
   const [pointsToRedeem, setPointsToRedeemState] = useState(0);
+
+  const [partyDetails, setPartyDetails] = useState<PartyDetailsState | null>(() => {
+    const saved = localStorage.getItem('party_details');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const isPartyOrder = partyDetails !== null;
+
+  useEffect(() => {
+    if (partyDetails) {
+      localStorage.setItem('party_details', JSON.stringify(partyDetails));
+    } else {
+      localStorage.removeItem('party_details');
+    }
+  }, [partyDetails]);
+
+  const addPartyOrderToCart = (
+    partyItems: { menuItem: MenuItem; quantity: number }[],
+    details: PartyDetailsState
+  ) => {
+    const newCartItems: CartItem[] = partyItems.map((pi) => {
+      const unitPrice = pi.menuItem.price !== undefined ? pi.menuItem.price : pi.menuItem.basePrice;
+      return {
+        menuItem: pi.menuItem,
+        quantity: pi.quantity,
+        portionSize: 'Party Feast Pack',
+        spiceLevel: 'MEDIUM',
+        selectedAddOns: [],
+        specialInstructions: `Party Order for ${details.guestCount} guests on ${details.eventDate} at ${details.eventTime}`,
+        unitPrice,
+        totalPrice: unitPrice * pi.quantity,
+      };
+    });
+
+    setPartyDetails(details);
+    setItems(newCartItems);
+    setIsCartOpen(true);
+  };
+
+  const setPartyOrderDetails = (details: PartyDetailsState | null) => {
+    setPartyDetails(details);
+  };
 
   // Auto load first outlet if none selected
   useEffect(() => {
@@ -173,7 +230,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCouponCode('');
     setCouponDiscount(0);
     setPointsToRedeemState(0);
+    setPartyDetails(null);
     localStorage.removeItem('cart_items');
+    localStorage.removeItem('party_details');
   };
 
   return (
@@ -191,10 +250,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         taxAmount,
         deliveryFee,
         totalAmount,
+        isPartyOrder,
+        partyDetails,
         setSelectedOutlet,
         setOrderType,
         setIsCartOpen,
         addItem,
+        addPartyOrderToCart,
+        setPartyOrderDetails,
         removeItem,
         updateQuantity,
         applyCoupon,

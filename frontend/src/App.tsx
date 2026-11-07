@@ -17,6 +17,7 @@ import KitchenDisplayPage from './pages/KitchenDisplayPage';
 import OutletManagerDashboard from './pages/OutletManagerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import CateringDashboard from './pages/CateringDashboard';
+import DeliveryDashboard from './pages/DeliveryDashboard';
 import ProfilePage from './pages/ProfilePage';
 
 interface ProtectedRouteProps {
@@ -38,6 +39,18 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
   return <>{children}</>;
 };
 
+const RoleAwareHome: React.FC = () => {
+  const { user } = useAuth();
+  if (user) {
+    if (user.role === 'KITCHEN_STAFF') return <Navigate to="/kitchen" replace />;
+    if (user.role === 'OUTLET_MANAGER') return <Navigate to="/manager" replace />;
+    if (user.role === 'CENTRAL_ADMIN') return <Navigate to="/admin" replace />;
+    if (user.role === 'DELIVERY_STAFF') return <Navigate to="/delivery" replace />;
+    if (user.role === 'CATERING_MANAGER') return <Navigate to="/kitchen" replace />;
+  }
+  return <HomePage />;
+};
+
 export const AppContent: React.FC = () => {
   return (
     <div className="flex flex-col min-h-screen">
@@ -45,10 +58,12 @@ export const AppContent: React.FC = () => {
       <main className="flex-1">
         <Routes>
           {/* Public Customer Routes */}
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<RoleAwareHome />} />
           <Route path="/outlets" element={<OutletsPage />} />
           <Route path="/track" element={<OrderTrackingPage />} />
           <Route path="/track/:orderNumber" element={<OrderTrackingPage />} />
+          <Route path="/orders" element={<OrderHistoryPage />} />
+          <Route path="/my-orders" element={<OrderHistoryPage />} />
           <Route path="/history" element={<OrderHistoryPage />} />
           <Route path="/party-orders" element={<PartyOrdersPage />} />
           <Route path="/login" element={<LoginPage />} />
@@ -93,12 +108,17 @@ export const AppContent: React.FC = () => {
           />
 
           <Route
-            path="/catering"
+            path="/delivery"
             element={
-              <ProtectedRoute allowedRoles={['CATERING_MANAGER', 'CENTRAL_ADMIN']}>
-                <CateringDashboard />
+              <ProtectedRoute allowedRoles={['DELIVERY_STAFF', 'OUTLET_MANAGER', 'CENTRAL_ADMIN']}>
+                <DeliveryDashboard />
               </ProtectedRoute>
             }
+          />
+
+          <Route
+            path="/catering"
+            element={<Navigate to="/kitchen" replace />}
           />
 
           {/* Catch-all redirect */}

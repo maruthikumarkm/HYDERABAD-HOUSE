@@ -12,19 +12,40 @@ import {
   Zap
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
-import { MenuItem, MenuCategory } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { Link } from 'react-router-dom';
+import { MenuItem, MenuCategory, Order } from '../types';
 import { FoodCard } from '../components/FoodCard';
 import api from '../services/api';
 
 export const HomePage: React.FC = () => {
   const { selectedOutlet, orderType, setOrderType, addItem } = useCart();
+  const { user, isAuthenticated } = useAuth();
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterVegOnly, setFilterVegOnly] = useState(false);
   const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Check for active orders for authenticated customer
+  useEffect(() => {
+    if (isAuthenticated) {
+      api.get('/orders/my-orders')
+        .then((res) => {
+          const list: Order[] = res.data || [];
+          const active = list.find((o) => 
+            ['PLACED', 'CONFIRMED', 'PREPARING', 'READY_FOR_PICKUP', 'RIDER_HANDOFF'].includes(o.status)
+          );
+          setActiveOrder(active || null);
+        })
+        .catch(() => {});
+    } else {
+      setActiveOrder(null);
+    }
+  }, [isAuthenticated]);
 
   // Load categories & menu items
   useEffect(() => {
@@ -56,6 +77,37 @@ export const HomePage: React.FC = () => {
 
   return (
     <div className="min-h-screen">
+      {/* Active Order In-Progress Alert Banner */}
+      {activeOrder && (
+        <div className="bg-gradient-to-r from-gold-500 via-gold-400 to-gold-500 text-charcoal-950 px-4 py-3 shadow-md border-b border-gold-600">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center space-x-2.5 text-xs font-bold">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-ping flex-shrink-0" />
+              <span>
+                Your order <span className="font-mono bg-charcoal-900 text-white px-2 py-0.5 rounded text-[11px] font-black">{activeOrder.orderNumber}</span> is currently{' '}
+                <strong className="uppercase underline tracking-wide text-maroon-950">{activeOrder.status.replace('_', ' ')}</strong> at{' '}
+                {activeOrder.outlet?.name}!
+              </span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Link
+                to={`/track/${activeOrder.orderNumber}`}
+                className="py-1 px-3.5 bg-maroon-900 hover:bg-black text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center gap-1"
+              >
+                <span>Track Live</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </Link>
+              <Link
+                to="/orders"
+                className="py-1 px-3 bg-white/90 hover:bg-white text-charcoal-900 text-xs font-bold rounded-xl transition-colors shadow-2xs"
+              >
+                My Orders
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hero Banner with Royal Nizami Theme */}
       <section className="relative bg-gradient-to-br from-maroon-950 via-maroon-900 to-charcoal-950 text-white py-16 sm:py-24 overflow-hidden border-b-4 border-gold-500">
         <div className="absolute inset-0 opacity-20 mix-blend-overlay pointer-events-none bg-[radial-gradient(#D4AF37_1px,transparent_1px)] [background-size:16px_16px]" />

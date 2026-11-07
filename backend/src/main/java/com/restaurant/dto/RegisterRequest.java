@@ -19,6 +19,9 @@ public class RegisterRequest {
     @Size(min = 6, message = "Password must be at least 6 characters")
     private String password;
 
+    private String role; // CUSTOMER, KITCHEN_STAFF, OUTLET_MANAGER, CENTRAL_ADMIN, CATERING_MANAGER
+    private Long outletId; // Assigned outlet for KITCHEN_STAFF and OUTLET_MANAGER
+
     // DPDP Act 2023 Marketing consent (optional)
     private Boolean emailPromotions = false;
     private Boolean smsPromotions = false;
@@ -37,6 +40,12 @@ public class RegisterRequest {
 
     public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }
+
+    public String getRole() { return role; }
+    public void setRole(String role) { this.role = role; }
+
+    public Long getOutletId() { return outletId; }
+    public void setOutletId(Long outletId) { this.outletId = outletId; }
 
     public Boolean getEmailPromotions() { return emailPromotions; }
     public void setEmailPromotions(Boolean emailPromotions) { this.emailPromotions = emailPromotions; }

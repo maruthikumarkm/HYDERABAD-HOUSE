@@ -11,6 +11,8 @@ public class AuthRequest {
     @NotBlank(message = "Password is required")
     private String password;
 
+    private String selectedRole;
+
     public AuthRequest() {}
 
     public String getEmail() { return email; }
@@ -18,4 +20,8 @@ public class AuthRequest {
 
     public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }
+
+    public String getSelectedRole() { return selectedRole; }
+    public void setSelectedRole(String selectedRole) { this.selectedRole = selectedRole; }
 }
+

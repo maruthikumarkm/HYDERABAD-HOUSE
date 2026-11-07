@@ -94,6 +94,25 @@ public class Order {
     @Column(name = "cancelled_at")
     private LocalDateTime cancelledAt;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "delivery_staff_id")
+    private User deliveryStaff;
+
+    @Column(name = "assigned_at")
+    private LocalDateTime assignedAt;
+
+    @Column(name = "picked_up_at")
+    private LocalDateTime pickedUpAt;
+
+    @Column(name = "out_for_delivery_at")
+    private LocalDateTime outForDeliveryAt;
+
+    @Column(name = "delivered_at")
+    private LocalDateTime deliveredAt;
+
+    @OneToOne(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    private PartyOrderDetail partyDetails;
+
     @Column(name = "is_late", nullable = false)
     private Boolean isLate = false;
 
@@ -203,6 +222,24 @@ public class Order {
 
     public LocalDateTime getCancelledAt() { return cancelledAt; }
     public void setCancelledAt(LocalDateTime cancelledAt) { this.cancelledAt = cancelledAt; }
+
+    public User getDeliveryStaff() { return deliveryStaff; }
+    public void setDeliveryStaff(User deliveryStaff) { this.deliveryStaff = deliveryStaff; }
+
+    public LocalDateTime getAssignedAt() { return assignedAt; }
+    public void setAssignedAt(LocalDateTime assignedAt) { this.assignedAt = assignedAt; }
+
+    public LocalDateTime getPickedUpAt() { return pickedUpAt; }
+    public void setPickedUpAt(LocalDateTime pickedUpAt) { this.pickedUpAt = pickedUpAt; }
+
+    public LocalDateTime getOutForDeliveryAt() { return outForDeliveryAt; }
+    public void setOutForDeliveryAt(LocalDateTime outForDeliveryAt) { this.outForDeliveryAt = outForDeliveryAt; }
+
+    public LocalDateTime getDeliveredAt() { return deliveredAt; }
+    public void setDeliveredAt(LocalDateTime deliveredAt) { this.deliveredAt = deliveredAt; }
+
+    public PartyOrderDetail getPartyDetails() { return partyDetails; }
+    public void setPartyDetails(PartyOrderDetail partyDetails) { this.partyDetails = partyDetails; }
 
     public Boolean getIsLate() { return isLate; }
     public void setIsLate(Boolean isLate) { this.isLate = isLate; }

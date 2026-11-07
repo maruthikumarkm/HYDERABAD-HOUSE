@@ -20,6 +20,13 @@ public class OrderCreateRequest {
 
     private String paymentMethod = "UPI"; // UPI, CARD, CASH
 
+    // Party / Bulk Order Details
+    private Boolean isPartyOrder = false;
+    private String eventType = "Party Feast";
+    private String eventDate;
+    private String eventTime = "19:30";
+    private Integer guestCount;
+
     @NotEmpty(message = "Cart cannot be empty")
     private List<OrderItemRequest> items;
 
@@ -51,6 +58,21 @@ public class OrderCreateRequest {
 
     public String getPaymentMethod() { return paymentMethod; }
     public void setPaymentMethod(String paymentMethod) { this.paymentMethod = paymentMethod; }
+
+    public Boolean getIsPartyOrder() { return isPartyOrder; }
+    public void setIsPartyOrder(Boolean isPartyOrder) { this.isPartyOrder = isPartyOrder; }
+
+    public String getEventType() { return eventType; }
+    public void setEventType(String eventType) { this.eventType = eventType; }
+
+    public String getEventDate() { return eventDate; }
+    public void setEventDate(String eventDate) { this.eventDate = eventDate; }
+
+    public String getEventTime() { return eventTime; }
+    public void setEventTime(String eventTime) { this.eventTime = eventTime; }
+
+    public Integer getGuestCount() { return guestCount; }
+    public void setGuestCount(Integer guestCount) { this.guestCount = guestCount; }
 
     public List<OrderItemRequest> getItems() { return items; }
     public void setItems(List<OrderItemRequest> items) { this.items = items; }

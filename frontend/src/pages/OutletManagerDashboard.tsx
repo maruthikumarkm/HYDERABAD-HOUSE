@@ -5,15 +5,21 @@ import {
   AlertTriangle, 
   ShoppingBag, 
   CheckCircle, 
+  CheckCircle2,
   Power, 
   Sliders, 
   Bell,
   RefreshCw,
   TrendingUp,
-  MapPin
+  MapPin,
+  Bike,
+  Sparkles,
+  Navigation,
+  User as UserIcon
 } from 'lucide-react';
-import { Outlet, MenuItem, NotificationItem } from '../types';
+import { Outlet, MenuItem, NotificationItem, Order } from '../types';
 import { useAuth } from '../context/AuthContext';
+import wsService from '../services/websocket';
 import api from '../services/api';
 
 export const OutletManagerDashboard: React.FC = () => {
@@ -23,24 +29,33 @@ export const OutletManagerDashboard: React.FC = () => {
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [alerts, setAlerts] = useState<NotificationItem[]>([]);
+  const [deliveryStaff, setDeliveryStaff] = useState<any[]>([]);
   const [workloadLevel, setWorkloadLevel] = useState<string>('NORMAL');
   const [prepTimeOverride, setPrepTimeOverride] = useState<number>(25);
   const [loading, setLoading] = useState(true);
+  const [assigningOrder, setAssigningOrder] = useState<number | null>(null);
+  const [selectedStaffMap, setSelectedStaffMap] = useState<Record<number, number>>({});
+  const [orderFilter, setOrderFilter] = useState<'ALL' | 'READY' | 'ASSIGNED' | 'PREPARING'>('ALL');
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [dashRes, itemsRes, alertsRes, outletsRes] = await Promise.all([
+      const [dashRes, itemsRes, alertsRes, outletsRes, staffRes] = await Promise.all([
         api.get(`/outlet-manager/dashboard?outletId=${outletId}`),
         api.get(`/menu/outlet/${outletId}`),
         api.get(`/outlet-manager/alerts?outletId=${outletId}`),
         api.get('/outlets'),
+        api.get(`/outlet-manager/delivery-staff?outletId=${outletId}`).catch(() => ({ data: { available: [], all: [] } })),
       ]);
 
       setDashboardData(dashRes.data);
       setMenuItems(itemsRes.data);
       setAlerts(alertsRes.data);
       setOutlets(outletsRes.data);
+      
+      const avail = staffRes.data?.available || [];
+      const all = staffRes.data?.all || [];
+      setDeliveryStaff(avail.length > 0 ? avail : all);
 
       if (dashRes.data?.outlet) {
         setWorkloadLevel(dashRes.data.outlet.currentWorkloadLevel || 'NORMAL');
@@ -55,6 +70,22 @@ export const OutletManagerDashboard: React.FC = () => {
 
   useEffect(() => {
     loadData();
+
+    // Live WebSocket subscription to manager updates
+    const topic = `/topic/manager/${outletId}`;
+    wsService.subscribe(topic, () => {
+      loadData();
+    });
+
+    // 5-second polling fallback
+    const poll = setInterval(() => {
+      loadData();
+    }, 5000);
+
+    return () => {
+      wsService.unsubscribe(topic);
+      clearInterval(poll);
+    };
   }, [outletId]);
 
   const handleUpdateWorkload = async () => {
@@ -77,6 +108,26 @@ export const OutletManagerDashboard: React.FC = () => {
       loadData();
     } catch (err) {
       console.error('Failed to toggle item availability', err);
+    }
+  };
+
+  const handleAssignDelivery = async (orderId: number) => {
+    const staffId = selectedStaffMap[orderId] || (deliveryStaff.length > 0 ? deliveryStaff[0].id : null);
+    if (!staffId) {
+      alert('Please select an available delivery partner');
+      return;
+    }
+
+    setAssigningOrder(orderId);
+    try {
+      await api.post(`/outlet-manager/orders/${orderId}/assign-delivery`, {
+        deliveryStaffId: staffId,
+      });
+      loadData();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to assign delivery staff');
+    } finally {
+      setAssigningOrder(null);
     }
   };
 
@@ -162,6 +213,185 @@ export const OutletManagerDashboard: React.FC = () => {
           </div>
           <span className="text-[10px] text-emerald-600 font-semibold">Today's direct volume</span>
         </div>
+      </div>
+
+      {/* Live Outlet Orders & Rider Dispatch Console */}
+      <div className="bg-white p-6 rounded-3xl border border-cream-200 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-cream-100 pb-4">
+          <div className="flex items-center space-x-3">
+            <div className="p-2.5 bg-maroon-100 text-maroon-800 rounded-2xl">
+              <ShoppingBag className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="font-serif font-black text-lg text-maroon-950">
+                Live Outlet Orders & Delivery Dispatch
+              </h2>
+              <p className="text-xs text-charcoal-500">
+                Assign delivery riders to prepared orders and monitor status transitions in real time.
+              </p>
+            </div>
+          </div>
+
+          {/* Filter Pills */}
+          <div className="flex items-center space-x-1.5 bg-cream-100 p-1 rounded-2xl">
+            {(['ALL', 'READY', 'ASSIGNED', 'PREPARING'] as const).map(f => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setOrderFilter(f)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  orderFilter === f
+                    ? 'bg-maroon-900 text-white shadow-xs'
+                    : 'text-charcoal-600 hover:text-maroon-900'
+                }`}
+              >
+                {f === 'READY' ? 'Ready for Pickup' : f === 'ASSIGNED' ? 'In-Transit' : f === 'PREPARING' ? 'Cooking' : 'All Orders'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {(() => {
+          const allOrders: Order[] = dashboardData?.orders || [];
+          const filteredOrders = allOrders.filter(o => {
+            if (orderFilter === 'READY') return o.status === 'READY_FOR_PICKUP' || o.status === 'READY';
+            if (orderFilter === 'ASSIGNED') return o.status === 'ASSIGNED' || o.status === 'ACCEPTED' || o.status === 'PICKED_UP' || o.status === 'OUT_FOR_DELIVERY';
+            if (orderFilter === 'PREPARING') return o.status === 'PLACED' || o.status === 'CONFIRMED' || o.status === 'PREPARING';
+            return true;
+          });
+
+          if (filteredOrders.length === 0) {
+            return (
+              <div className="text-center py-12 text-charcoal-400 text-xs">
+                No orders matching the selected filter ({orderFilter}).
+              </div>
+            );
+          }
+
+          return (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {filteredOrders.map(order => {
+                const isParty = order.orderType === 'PARTY_BULK' || Boolean(order.partyDetails);
+                const isReady = order.status === 'READY_FOR_PICKUP' || order.status === 'READY';
+
+                return (
+                  <div 
+                    key={order.id} 
+                    className={`p-4 rounded-2xl border transition-all space-y-3 ${
+                      isReady ? 'border-amber-400 bg-amber-50/30' : 'border-cream-200 bg-cream-50/40'
+                    }`}
+                  >
+                    {/* Header */}
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <span className="font-mono font-black text-sm text-maroon-950">{order.orderNumber}</span>
+                          {isParty && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-gradient-to-r from-amber-500 to-gold-500 text-charcoal-950 shadow-2xs">
+                              👑 Royal Banquet ({order.partyDetails?.guestCount || 25} Guests)
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-charcoal-500 mt-0.5">
+                          {order.customerName} • {order.customerPhone}
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <span className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${
+                          isReady 
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300' 
+                            : order.status === 'ASSIGNED' || order.status === 'ACCEPTED' || order.status === 'OUT_FOR_DELIVERY'
+                            ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                            : order.status === 'DELIVERED' || order.status === 'COMPLETED'
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            : 'bg-cream-200 text-charcoal-700'
+                        }`}>
+                          {order.status.replace('_', ' ')}
+                        </span>
+                        <span className="block mt-1 font-mono font-bold text-xs text-maroon-900">
+                          ₹{order.totalAmount}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Address & Instructions */}
+                    <div className="text-xs text-charcoal-600 bg-white p-2.5 rounded-xl border border-cream-200 space-y-1">
+                      <div className="flex items-start space-x-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-maroon-800 flex-shrink-0 mt-0.5" />
+                        <span className="text-[11px] leading-relaxed truncate">
+                          {order.deliveryAddress || 'Kondapur, Hyderabad'}
+                        </span>
+                      </div>
+                      {order.specialInstructions && (
+                        <p className="text-[10px] text-gold-900 italic pt-0.5">
+                          Note: {order.specialInstructions}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Items Summary */}
+                    <div className="text-[11px] text-charcoal-700 flex flex-wrap gap-1.5">
+                      {order.items?.map((it, idx) => (
+                        <span key={idx} className="px-2 py-0.5 bg-white rounded-md border border-cream-200 font-medium">
+                          {it.itemName} × {it.quantity}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Rider Assignment Action */}
+                    {isReady ? (
+                      <div className="pt-2 border-t border-cream-200 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                        <div className="flex-1">
+                          <label className="block text-[10px] uppercase font-bold text-charcoal-500 mb-1">
+                            Assign Delivery Staff:
+                          </label>
+                          <select
+                            value={selectedStaffMap[order.id] || (deliveryStaff[0]?.id || '')}
+                            onChange={(e) => setSelectedStaffMap(prev => ({ ...prev, [order.id]: Number(e.target.value) }))}
+                            className="w-full py-1.5 px-2.5 text-xs bg-white border border-cream-300 rounded-xl font-bold text-charcoal-800"
+                          >
+                            {deliveryStaff.map(st => (
+                              <option key={st.id} value={st.id}>
+                                {st.name} ({st.phone}) • {st.availabilityStatus || 'AVAILABLE'}
+                              </option>
+                            ))}
+                            {deliveryStaff.length === 0 && (
+                              <option value="">No delivery staff registered</option>
+                            )}
+                          </select>
+                        </div>
+                        <div className="sm:self-end">
+                          <button
+                            type="button"
+                            disabled={assigningOrder === order.id || deliveryStaff.length === 0}
+                            onClick={() => handleAssignDelivery(order.id)}
+                            className="w-full sm:w-auto py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all active:scale-95 flex items-center justify-center space-x-1.5 disabled:opacity-50"
+                          >
+                            <Bike className="w-3.5 h-3.5" />
+                            <span>{assigningOrder === order.id ? 'Assigning...' : 'Dispatch Rider'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : order.deliveryStaff ? (
+                      <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center justify-between text-xs">
+                        <div className="flex items-center space-x-2">
+                          <Bike className="w-4 h-4 text-emerald-700" />
+                          <span className="font-bold text-emerald-950">
+                            Rider: {order.deliveryStaff.name} ({order.deliveryStaff.phone})
+                          </span>
+                        </div>
+                        <span className="text-[10px] uppercase font-bold text-emerald-800 bg-white px-2 py-0.5 rounded-md border border-emerald-200">
+                          {order.status.replace('_', ' ')}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Workload Control & Prep Time Override Box */}

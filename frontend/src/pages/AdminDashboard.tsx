@@ -26,6 +26,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { MenuItem, MenuCategory, Outlet } from '../types';
+import wsService from '../services/websocket';
 import api from '../services/api';
 
 const COLORS = ['#800020', '#D4AF37', '#2563EB', '#10B981', '#8B5CF6', '#F59E0B'];
@@ -79,6 +80,22 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     loadData();
+
+    // Subscribe to admin WebSocket updates
+    const topic = '/topic/admin';
+    wsService.subscribe(topic, () => {
+      loadData();
+    });
+
+    // 8-second polling fallback
+    const poll = setInterval(() => {
+      loadData();
+    }, 8000);
+
+    return () => {
+      wsService.unsubscribe(topic);
+      clearInterval(poll);
+    };
   }, []);
 
   const handleOpenCreate = () => {
@@ -235,15 +252,22 @@ export const AdminDashboard: React.FC = () => {
                 </div>
               </div>
 
-              <div className="h-72 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={analytics.outletPerformance || []}>
-                    <XAxis dataKey="outletName" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Bar dataKey="sales" fill="#800020" radius={[8, 8, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="h-72 w-full flex items-center justify-center">
+                {analytics.totalOrders > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={analytics.outletPerformance || []}>
+                      <XAxis dataKey="outletName" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <Tooltip />
+                      <Bar dataKey="sales" fill="#800020" radius={[8, 8, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="text-center text-charcoal-400 text-xs space-y-1">
+                    <p className="font-bold text-charcoal-600">Zero orders recorded across all 17 outlets</p>
+                    <p className="text-[11px] text-charcoal-400">Live sales comparisons will populate automatically as orders occur</p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -251,28 +275,35 @@ export const AdminDashboard: React.FC = () => {
             <div className="lg:col-span-4 bg-white p-6 rounded-3xl border border-cream-200 shadow-sm space-y-4">
               <div>
                 <h3 className="font-serif font-bold text-base text-maroon-950">Payment Breakdown</h3>
-                <p className="text-xs text-charcoal-500">UPI vs Cards vs Cash at counter</p>
+                <p className="text-xs text-charcoal-500">PhonePe UPI vs Pay at Counter</p>
               </div>
 
-              <div className="h-64 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={analytics.paymentBreakdown || []}
-                      dataKey="count"
-                      nameKey="method"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={75}
-                      label
-                    >
-                      {(analytics.paymentBreakdown || []).map((_: any, index: number) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
+              <div className="h-64 w-full flex items-center justify-center">
+                {analytics.paymentBreakdown && analytics.paymentBreakdown.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={analytics.paymentBreakdown || []}
+                        dataKey="count"
+                        nameKey="method"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={75}
+                        label
+                      >
+                        {(analytics.paymentBreakdown || []).map((_: any, index: number) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="text-center text-charcoal-400 text-xs space-y-1">
+                    <p className="font-bold text-charcoal-600">No payment transactions yet</p>
+                    <p className="text-[11px] text-charcoal-400">UPI & counter payments will appear once orders are placed</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -290,13 +321,21 @@ export const AdminDashboard: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-cream-100">
-                  {analytics.popularItems?.map((dish: any, idx: number) => (
-                    <tr key={idx} className="hover:bg-cream-50/50">
-                      <td className="p-3 font-serif font-bold text-charcoal-900">{dish.name}</td>
-                      <td className="p-3 font-semibold text-charcoal-700">{dish.quantitySold} units</td>
-                      <td className="p-3 font-mono font-bold text-maroon-900">₹{dish.revenue}</td>
+                  {analytics.popularItems && analytics.popularItems.length > 0 ? (
+                    analytics.popularItems.map((dish: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-cream-50/50">
+                        <td className="p-3 font-serif font-bold text-charcoal-900">{dish.name}</td>
+                        <td className="p-3 font-semibold text-charcoal-700">{dish.quantitySold} units</td>
+                        <td className="p-3 font-mono font-bold text-maroon-900">₹{dish.revenue}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={3} className="p-6 text-center text-charcoal-400 font-medium">
+                        No dish orders recorded yet. As customers order biryanis and kebabs, sales volumes will calculate live.
+                      </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>

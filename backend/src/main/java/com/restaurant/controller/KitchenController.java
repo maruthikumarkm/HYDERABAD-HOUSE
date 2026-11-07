@@ -25,9 +25,8 @@ public class KitchenController {
     @GetMapping("/orders")
     public ResponseEntity<?> getKitchenOrders(@AuthenticationPrincipal UserPrincipal userPrincipal,
                                               @RequestParam(required = false) Long outletId) {
-        Long targetOutletId = outletId != null ? outletId : userPrincipal.getOutletId();
+        Long targetOutletId = outletId != null ? outletId : (userPrincipal != null ? userPrincipal.getOutletId() : null);
         if (targetOutletId == null) {
-            // Default to Kondapur (outlet 1) if staff doesn't have an outlet set
             targetOutletId = 1L;
         }
 
@@ -46,5 +45,13 @@ public class KitchenController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    @GetMapping("/party-orders")
+    public ResponseEntity<?> getPartyOrders(@AuthenticationPrincipal UserPrincipal userPrincipal,
+                                            @RequestParam(required = false) Long outletId) {
+        Long targetOutletId = outletId != null ? outletId : (userPrincipal != null ? userPrincipal.getOutletId() : null);
+        List<Order> partyOrders = orderService.getPartyOrdersForKitchen(targetOutletId);
+        return ResponseEntity.ok(partyOrders);
     }
 }

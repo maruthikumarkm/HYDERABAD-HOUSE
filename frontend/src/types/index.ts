@@ -1,4 +1,4 @@
-export type Role = 'CUSTOMER' | 'KITCHEN_STAFF' | 'OUTLET_MANAGER' | 'CENTRAL_ADMIN' | 'CATERING_MANAGER';
+export type Role = 'CUSTOMER' | 'KITCHEN_STAFF' | 'OUTLET_MANAGER' | 'CENTRAL_ADMIN' | 'DELIVERY_STAFF' | 'CATERING_MANAGER';
 
 export interface User {
   id: number;
@@ -78,7 +78,13 @@ export type OrderStatus =
   | 'PLACED'
   | 'CONFIRMED'
   | 'PREPARING'
+  | 'READY'
   | 'READY_FOR_PICKUP'
+  | 'ASSIGNED'
+  | 'ACCEPTED'
+  | 'PICKED_UP'
+  | 'OUT_FOR_DELIVERY'
+  | 'DELIVERED'
   | 'RIDER_HANDOFF'
   | 'COMPLETED'
   | 'CANCELLED';
@@ -99,7 +105,7 @@ export interface Order {
   id: number;
   orderNumber: string;
   outlet: Outlet;
-  orderType: 'DELIVERY' | 'PICKUP';
+  orderType: 'DELIVERY' | 'PICKUP' | 'PARTY_BULK' | string;
   status: OrderStatus;
   subtotal: number;
   taxAmount: number;
@@ -108,7 +114,7 @@ export interface Order {
   loyaltyDiscount: number;
   totalAmount: number;
   paymentStatus: 'PENDING' | 'PAID' | 'REFUNDED';
-  paymentMethod: 'UPI' | 'CARD' | 'CASH';
+  paymentMethod: 'UPI' | 'CARD' | 'CASH' | string;
   deliveryAddress?: string;
   customerName: string;
   customerPhone: string;
@@ -119,10 +125,30 @@ export interface Order {
   confirmedAt?: string;
   preparingAt?: string;
   readyAt?: string;
+  assignedAt?: string;
+  pickedUpAt?: string;
+  outForDeliveryAt?: string;
+  deliveredAt?: string;
   handedOffAt?: string;
   completedAt?: string;
   cancelledAt?: string;
   isLate: boolean;
+  deliveryStaff?: {
+    id: number;
+    name: string;
+    phone: string;
+    availabilityStatus?: string;
+  };
+  partyDetails?: {
+    eventType?: string;
+    eventDate?: string;
+    eventTime?: string;
+    guestCount?: number;
+    specialInstructions?: string;
+    contactName?: string;
+    contactPhone?: string;
+    deliveryAddress?: string;
+  };
   items: OrderItemDetail[];
 }
 

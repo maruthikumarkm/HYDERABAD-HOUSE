@@ -24,4 +24,9 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findActiveOrdersToCheckLate();
 
     List<Order> findByPlacedAtBetweenOrderByPlacedAtDesc(LocalDateTime start, LocalDateTime end);
+
+    List<Order> findByDeliveryStaffIdOrderByAssignedAtDesc(Long deliveryStaffId);
+    List<Order> findByDeliveryStaffIdAndStatusInOrderByAssignedAtDesc(Long deliveryStaffId, List<String> statuses);
+    List<Order> findByOrderTypeOrderByPlacedAtDesc(String orderType);
+    List<Order> findByOutletIdAndOrderTypeOrderByPlacedAtDesc(Long outletId, String orderType);
 }

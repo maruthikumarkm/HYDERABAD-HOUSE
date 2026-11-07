@@ -37,4 +37,10 @@ public class WebSocketService {
         logger.info("Broadcasting to admin destination: /topic/admin");
         messagingTemplate.convertAndSend("/topic/admin", payload);
     }
+
+    public void sendToDelivery(Long deliveryStaffId, Object payload) {
+        String destination = "/topic/delivery/" + deliveryStaffId;
+        logger.info("Broadcasting to delivery staff destination: {}", destination);
+        messagingTemplate.convertAndSend(destination, payload);
+    }
 }

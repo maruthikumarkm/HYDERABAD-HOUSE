@@ -30,9 +30,17 @@ public class AuthController {
         try {
             AuthResponse response = authService.login(loginRequest);
             return ResponseEntity.ok(response);
+        } catch (org.springframework.security.authentication.BadCredentialsException e) {
+            Map<String, String> err = new HashMap<>();
+            String msg = e.getMessage();
+            if (msg == null || msg.equalsIgnoreCase("Bad credentials")) {
+                msg = "Invalid email or password. Please verify your credentials.";
+            }
+            err.put("error", msg);
+            return ResponseEntity.status(401).body(err);
         } catch (Exception e) {
             Map<String, String> err = new HashMap<>();
-            err.put("error", "Authentication failed: " + e.getMessage());
+            err.put("error", e.getMessage() != null ? e.getMessage() : "Authentication failed");
             return ResponseEntity.badRequest().body(err);
         }
     }

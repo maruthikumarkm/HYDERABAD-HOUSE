@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   X, 
@@ -9,17 +9,29 @@ import {
   ShoppingBag, 
   ArrowRight, 
   ShieldCheck, 
-  CreditCard, 
   Smartphone, 
   Banknote,
   Award,
   Clock,
-  Sparkles
+  Sparkles,
+  QrCode,
+  ExternalLink,
+  CheckCircle2,
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+
+interface PhonePeSession {
+  merchantTransactionId: string;
+  amount: number;
+  redirectUrl: string;
+  qrString: string;
+  status: string;
+}
 
 export const CartDrawer: React.FC = () => {
   const { 
@@ -42,7 +54,9 @@ export const CartDrawer: React.FC = () => {
     totalAmount,
     selectedOutlet,
     orderType,
-    setOrderType
+    setOrderType,
+    isPartyOrder,
+    partyDetails
   } = useCart();
 
   const { user, isAuthenticated, updateLoyaltyPoints } = useAuth();
@@ -50,13 +64,83 @@ export const CartDrawer: React.FC = () => {
 
   const [couponInput, setCouponInput] = useState('');
   const [couponMsg, setCouponMsg] = useState<{ text: string; isError: boolean } | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'CARD' | 'CASH'>('UPI');
+  const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'CASH'>('UPI');
   const [deliveryAddress, setDeliveryAddress] = useState('Flat 402, Royal Palms, Botanical Garden Road, Kondapur, Hyderabad');
   const [customerName, setCustomerName] = useState(user?.name || 'Rahul Sharma');
   const [customerPhone, setCustomerPhone] = useState(user?.phone || '+919876543210');
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // PhonePe Checkout Modal state
+  const [phonePeSession, setPhonePeSession] = useState<PhonePeSession | null>(null);
+  const [isPhonePeModalOpen, setIsPhonePeModalOpen] = useState(false);
+  const [phonePeStatus, setPhonePeStatus] = useState<'INITIATING' | 'WAITING' | 'SUCCESS' | 'FAILED'>('WAITING');
+  const [phonePeTimeLeft, setPhonePeTimeLeft] = useState(300); // 5 min countdown
+  const [isSimulating, setIsSimulating] = useState(false);
+
+  // Polling for PhonePe payment status
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout | null = null;
+
+    if (isPhonePeModalOpen && phonePeSession?.merchantTransactionId && phonePeStatus === 'WAITING') {
+      pollInterval = setInterval(async () => {
+        try {
+          const res = await api.get(`/payments/phonepe/status/${phonePeSession.merchantTransactionId}`);
+          if (res.data?.status === 'COMPLETED' || res.data?.status === 'SUCCESS') {
+            setPhonePeStatus('SUCCESS');
+            if (pollInterval) clearInterval(pollInterval);
+
+            // Celebrate with confetti
+            confetti({
+              particleCount: 100,
+              spread: 70,
+              origin: { y: 0.6 }
+            });
+
+            // Update loyalty points
+            if (user?.loyaltyPoints !== undefined) {
+              updateLoyaltyPoints(user.loyaltyPoints - pointsToRedeem + Math.floor(phonePeSession.amount * 0.1));
+            }
+
+            // Clear cart & redirect
+            setTimeout(() => {
+              clearCart();
+              setIsPhonePeModalOpen(false);
+              setIsCartOpen(false);
+              navigate(`/track/${res.data.orderNumber}`);
+            }, 1200);
+          } else if (res.data?.status === 'FAILED') {
+            setPhonePeStatus('FAILED');
+            if (pollInterval) clearInterval(pollInterval);
+            setErrorMsg('PhonePe payment failed or expired. Please try again.');
+          }
+        } catch (e) {
+          console.error('Error checking PhonePe payment status', e);
+        }
+      }, 2500);
+    }
+
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [isPhonePeModalOpen, phonePeSession, phonePeStatus]);
+
+  // PhonePe Countdown timer
+  useEffect(() => {
+    if (!isPhonePeModalOpen || phonePeStatus !== 'WAITING') return;
+    if (phonePeTimeLeft <= 0) {
+      setPhonePeStatus('FAILED');
+      setErrorMsg('Payment session expired. Please reinitiate checkout.');
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setPhonePeTimeLeft((prev) => prev - 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isPhonePeModalOpen, phonePeStatus, phonePeTimeLeft]);
 
   if (!isCartOpen) return null;
 
@@ -84,54 +168,92 @@ export const CartDrawer: React.FC = () => {
     setIsSubmitting(true);
     setErrorMsg(null);
 
-    try {
-      const payload = {
-        outletId: selectedOutlet.id,
-        orderType,
-        deliveryAddress: orderType === 'DELIVERY' ? deliveryAddress : 'Takeaway Counter',
-        customerName: user?.name || customerName,
-        customerPhone: user?.phone || customerPhone,
-        specialInstructions,
-        couponCode: couponDiscount > 0 ? couponCode : null,
-        pointsToRedeem,
-        paymentMethod,
-        items: items.map((item) => ({
-          menuItemId: item.menuItem.id,
-          quantity: item.quantity,
-          portionSize: item.portionSize,
-          spiceLevel: item.spiceLevel,
-          specialInstructions: item.specialInstructions,
-          addOnsJson: item.selectedAddOns ? JSON.stringify(item.selectedAddOns) : null,
-          unitPrice: item.unitPrice,
-        })),
-      };
+    const payload = {
+      outletId: selectedOutlet.id,
+      orderType: isPartyOrder ? 'PARTY_BULK' : orderType,
+      deliveryAddress: orderType === 'DELIVERY' || isPartyOrder ? (partyDetails?.deliveryAddress || deliveryAddress) : 'Takeaway Counter',
+      customerName: user?.name || partyDetails?.contactName || customerName,
+      customerPhone: user?.phone || partyDetails?.contactPhone || customerPhone,
+      specialInstructions: partyDetails?.specialInstructions || specialInstructions,
+      couponCode: couponDiscount > 0 ? couponCode : null,
+      pointsToRedeem,
+      paymentMethod,
+      isPartyOrder: isPartyOrder || false,
+      eventType: partyDetails?.eventType || 'Party Feast',
+      eventDate: partyDetails?.eventDate || null,
+      eventTime: partyDetails?.eventTime || '19:30',
+      guestCount: partyDetails?.guestCount || null,
+      items: items.map((item) => ({
+        menuItemId: item.menuItem.id,
+        quantity: item.quantity,
+        portionSize: item.portionSize,
+        spiceLevel: item.spiceLevel,
+        specialInstructions: item.specialInstructions,
+        addOnsJson: item.selectedAddOns ? JSON.stringify(item.selectedAddOns) : null,
+        unitPrice: item.unitPrice,
+      })),
+    };
 
-      const res = await api.post('/orders/create', payload);
-      const createdOrder = res.data;
-
-      // Celebrate with confetti
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 }
-      });
-
-      // Clear cart
-      clearCart();
-      setIsCartOpen(false);
-
-      // Refresh loyalty points
-      if (user?.loyaltyPoints !== undefined) {
-        updateLoyaltyPoints(user.loyaltyPoints - pointsToRedeem + Math.floor(createdOrder.totalAmount * 0.1));
+    if (paymentMethod === 'UPI') {
+      try {
+        const res = await api.post('/payments/phonepe/initiate', payload);
+        setPhonePeSession(res.data);
+        setPhonePeStatus('WAITING');
+        setPhonePeTimeLeft(300);
+        setIsPhonePeModalOpen(true);
+      } catch (err: any) {
+        setErrorMsg(err.response?.data?.error || 'Failed to initiate PhonePe payment. Please try again.');
+      } finally {
+        setIsSubmitting(false);
       }
+    } else {
+      // CASH / Pay at Counter
+      try {
+        const res = await api.post('/orders/create', payload);
+        const createdOrder = res.data;
 
-      // Navigate directly to real-time order tracking!
-      navigate(`/track/${createdOrder.orderNumber}`);
-    } catch (err: any) {
-      setErrorMsg(err.response?.data?.error || 'Failed to place order. Please check item availability.');
-    } finally {
-      setIsSubmitting(false);
+        confetti({
+          particleCount: 80,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+
+        clearCart();
+        setIsCartOpen(false);
+
+        if (user?.loyaltyPoints !== undefined) {
+          updateLoyaltyPoints(user.loyaltyPoints - pointsToRedeem + Math.floor(createdOrder.totalAmount * 0.1));
+        }
+
+        navigate(`/track/${createdOrder.orderNumber}`);
+      } catch (err: any) {
+        setErrorMsg(err.response?.data?.error || 'Failed to place order. Please check item availability.');
+      } finally {
+        setIsSubmitting(false);
+      }
     }
+  };
+
+  const handleSimulatePayment = async (action: 'SUCCESS' | 'FAIL') => {
+    if (!phonePeSession) return;
+    setIsSimulating(true);
+    try {
+      await api.post('/payments/phonepe/simulate-action', {
+        merchantTransactionId: phonePeSession.merchantTransactionId,
+        action,
+      });
+      // The poll interval will pick up the updated status immediately
+    } catch (e) {
+      console.error('Failed to simulate action', e);
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
+  const formatCountdown = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
   return (
@@ -151,120 +273,131 @@ export const CartDrawer: React.FC = () => {
                 <ShoppingBag className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-serif font-bold text-base text-maroon-900">Your Royal Cart</h3>
-                <p className="text-xs text-charcoal-600">
-                  {selectedOutlet ? selectedOutlet.name.replace('Hyderabad House - ', '') : 'Select Outlet'}
+                <h2 className="font-serif font-black text-lg text-maroon-950">Your Nizami Feast</h2>
+                <p className="text-[11px] text-charcoal-500">
+                  {selectedOutlet ? selectedOutlet.name : 'Select outlet before ordering'}
                 </p>
               </div>
             </div>
             <button
               type="button"
               onClick={() => setIsCartOpen(false)}
-              className="p-1.5 rounded-full hover:bg-cream-200 text-charcoal-700 transition-colors"
+              className="p-2 rounded-xl text-charcoal-400 hover:text-charcoal-800 hover:bg-cream-100 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Delivery / Takeaway Toggle */}
-          <div className="px-5 py-2.5 bg-cream-100/70 border-b border-cream-200 flex items-center justify-between">
-            <span className="text-xs font-semibold text-charcoal-700">Order Mode:</span>
-            <div className="flex bg-white p-0.5 rounded-lg border border-cream-200 text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => setOrderType('DELIVERY')}
-                className={`px-3 py-1 rounded-md transition-all ${
-                  orderType === 'DELIVERY' ? 'bg-maroon-800 text-white' : 'text-charcoal-700'
-                }`}
-              >
-                Delivery
-              </button>
-              <button
-                type="button"
-                onClick={() => setOrderType('PICKUP')}
-                className={`px-3 py-1 rounded-md transition-all ${
-                  orderType === 'PICKUP' ? 'bg-maroon-800 text-white' : 'text-charcoal-700'
-                }`}
-              >
-                Takeaway
-              </button>
-            </div>
-          </div>
-
           {/* Cart Items List */}
-          <div className="p-5 overflow-y-auto flex-1 divide-y divide-cream-100">
+          <div className="flex-1 overflow-y-auto p-5 space-y-4">
             {items.length === 0 ? (
-              <div className="py-16 text-center text-charcoal-500 space-y-3">
-                <ShoppingBag className="w-12 h-12 mx-auto text-cream-300" />
-                <p className="text-sm font-medium">Your cart is empty</p>
-                <p className="text-xs text-charcoal-400 max-w-xs mx-auto">
-                  Add some aromatic dum biryani, kebabs, or double ka meetha to begin!
+              <div className="py-20 text-center space-y-3">
+                <div className="w-16 h-16 rounded-full bg-cream-100 text-maroon-800 flex items-center justify-center mx-auto">
+                  <ShoppingBag className="w-8 h-8 opacity-40" />
+                </div>
+                <h3 className="font-serif font-bold text-base text-charcoal-800">Your feast is empty</h3>
+                <p className="text-xs text-charcoal-500 max-w-xs mx-auto">
+                  Add genuine dum biryanis, kebabs, or Nizami desserts from our authentic royal menu.
                 </p>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCartOpen(false);
+                      navigate('/orders');
+                    }}
+                    className="inline-flex items-center gap-1.5 py-2 px-4 bg-maroon-900 text-white font-bold text-xs rounded-xl shadow-xs hover:bg-black transition-all"
+                  >
+                    <ShoppingBag className="w-3.5 h-3.5" />
+                    <span>View Placed Orders</span>
+                  </button>
+                </div>
               </div>
             ) : (
-              items.map((item, index) => (
-                <div key={index} className="py-3.5 first:pt-0 flex items-start justify-between space-x-3">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2">
-                      <div className={`w-2.5 h-2.5 rounded-full ${item.menuItem.isVeg ? 'bg-green-600' : 'bg-red-600'}`} />
-                      <h4 className="font-serif font-bold text-xs text-charcoal-900">{item.menuItem.name}</h4>
+              <>
+                {isPartyOrder && partyDetails && (
+                  <div className="p-3.5 bg-gradient-to-r from-amber-50 to-gold-50 rounded-2xl border border-gold-300 shadow-xs space-y-1 mb-2">
+                    <div className="flex items-center space-x-2 text-gold-900 font-extrabold text-xs">
+                      <Sparkles className="w-4 h-4 text-gold-600 animate-pulse" />
+                      <span>Royal Bulk / Party Feast Configuration</span>
                     </div>
+                    <div className="text-[11px] text-charcoal-700 flex flex-wrap gap-x-3 gap-y-1">
+                      <span><strong>Guests:</strong> {partyDetails.guestCount} persons</span>
+                      <span><strong>Date:</strong> {partyDetails.eventDate}</span>
+                      <span><strong>Time:</strong> {partyDetails.eventTime}</span>
+                    </div>
+                    {partyDetails.specialInstructions && (
+                      <div className="text-[10px] text-charcoal-500 italic pt-0.5">
+                        "{partyDetails.specialInstructions}"
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                    <p className="text-[11px] text-charcoal-500 mt-0.5">
-                      {item.portionSize} • {item.spiceLevel}
-                    </p>
-
+                {items.map((item, index) => (
+                  <div 
+                    key={`${item.menuItem.id}-${item.portionSize}-${index}`}
+                    className="p-3.5 bg-cream-50 rounded-2xl border border-cream-200 flex items-start justify-between space-x-3"
+                  >
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center space-x-2">
+                      <span className={`w-2 h-2 rounded-full ${item.menuItem.isVeg ? 'bg-emerald-600' : 'bg-red-600'}`} />
+                      <h4 className="font-serif font-bold text-sm text-maroon-950">{item.menuItem.name}</h4>
+                    </div>
+                    <div className="text-[11px] text-charcoal-500 flex flex-wrap gap-2">
+                      <span>{item.portionSize}</span>
+                      <span>•</span>
+                      <span className="capitalize">{item.spiceLevel.toLowerCase()} spice</span>
+                    </div>
                     {item.selectedAddOns && item.selectedAddOns.length > 0 && (
-                      <div className="mt-1 flex flex-wrap gap-1">
+                      <div className="text-[10px] text-charcoal-600 space-y-0.5 pt-1">
                         {item.selectedAddOns.map((addon) => (
-                          <span key={addon.id} className="text-[10px] bg-gold-50 text-gold-900 border border-gold-200 px-1.5 py-0.5 rounded">
-                            +{addon.name} (₹{addon.price})
-                          </span>
+                          <div key={addon.id} className="flex justify-between text-gold-900">
+                            <span>+ {addon.name}</span>
+                            <span>+₹{addon.price}</span>
+                          </div>
                         ))}
                       </div>
                     )}
-
-                    {item.specialInstructions && (
-                      <p className="text-[10px] text-maroon-800 italic mt-0.5">"{item.specialInstructions}"</p>
-                    )}
-
-                    <div className="mt-2 flex items-center justify-between">
-                      <span className="text-xs font-bold text-maroon-900">₹{item.totalPrice}</span>
-
-                      {/* Quantity Stepper */}
-                      <div className="flex items-center space-x-2 bg-cream-50 px-2 py-1 rounded-lg border border-cream-200">
-                        <button
-                          type="button"
-                          onClick={() => updateQuantity(index, item.quantity - 1)}
-                          className="p-0.5 text-charcoal-600 hover:text-maroon-800"
-                        >
-                          <Minus className="w-3 h-3" />
-                        </button>
-                        <span className="text-xs font-bold w-4 text-center">{item.quantity}</span>
-                        <button
-                          type="button"
-                          onClick={() => updateQuantity(index, item.quantity + 1)}
-                          className="p-0.5 text-charcoal-600 hover:text-maroon-800"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
-                      </div>
+                    <div className="pt-1 text-xs font-bold text-maroon-900">
+                      ₹{item.unitPrice * item.quantity}
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => removeItem(index)}
-                    className="p-1 text-charcoal-400 hover:text-red-600 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex flex-col items-end space-y-2">
+                    <div className="flex items-center space-x-2 bg-white rounded-xl border border-cream-200 p-1 shadow-2xs">
+                      <button
+                        type="button"
+                        onClick={() => updateQuantity(index, item.quantity - 1)}
+                        className="p-1 text-charcoal-600 hover:text-maroon-900"
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="text-xs font-bold text-charcoal-900 px-1">{item.quantity}</span>
+                      <button
+                        type="button"
+                        onClick={() => updateQuantity(index, item.quantity + 1)}
+                        className="p-1 text-charcoal-600 hover:text-maroon-900"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => removeItem(index)}
+                      className="p-1 text-charcoal-400 hover:text-red-600 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-              ))
+              ))}
+              </>
             )}
           </div>
 
-          {/* Checkout Controls (only if items present) */}
+          {/* Checkout Controls */}
           {items.length > 0 && (
             <div className="p-5 bg-cream-50 border-t border-cream-200 space-y-4 max-h-[50vh] overflow-y-auto">
               {/* Coupon Form */}
@@ -307,7 +440,7 @@ export const CartDrawer: React.FC = () => {
                 )}
               </form>
 
-              {/* Loyalty Points Redemption (if logged in and has points) */}
+              {/* Loyalty Points Redemption */}
               {user && (user.loyaltyPoints || 0) > 0 && (
                 <div className="p-3 bg-white rounded-xl border border-gold-300 space-y-2">
                   <div className="flex items-center justify-between text-xs">
@@ -333,7 +466,7 @@ export const CartDrawer: React.FC = () => {
                 </div>
               )}
 
-              {/* Delivery Address (for Delivery) */}
+              {/* Delivery Address */}
               {orderType === 'DELIVERY' && (
                 <div>
                   <label className="block text-[11px] font-bold text-charcoal-700 mb-1 uppercase tracking-wider">
@@ -349,31 +482,44 @@ export const CartDrawer: React.FC = () => {
                 </div>
               )}
 
-              {/* Mock Payment Method Selection */}
+              {/* Real Payment Method: UPI (PhonePe) vs Pay at Counter */}
               <div>
-                <label className="block text-[11px] font-bold text-charcoal-700 mb-1.5 uppercase tracking-wider">
-                  Test Mock Payment
+                <label className="block text-[11px] font-bold text-charcoal-700 mb-1.5 uppercase tracking-wider flex items-center justify-between">
+                  <span>Payment Method</span>
+                  <span className="text-[10px] text-gold-700 font-bold lowercase tracking-normal">Direct Nizami Gateway</span>
                 </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { id: 'UPI', label: 'UPI (GPay/PhonePe)', icon: Smartphone },
-                    { id: 'CARD', label: 'Credit/Debit Card', icon: CreditCard },
-                    { id: 'CASH', label: 'Pay at Counter', icon: Banknote },
-                  ].map((m) => (
-                    <button
-                      type="button"
-                      key={m.id}
-                      onClick={() => setPaymentMethod(m.id as any)}
-                      className={`p-2 rounded-xl border text-[11px] font-semibold flex flex-col items-center justify-center space-y-1 transition-all ${
-                        paymentMethod === m.id
-                          ? 'bg-maroon-800 text-white border-maroon-800 shadow-xs'
-                          : 'bg-white text-charcoal-700 border-cream-200 hover:border-gold-400'
-                      }`}
-                    >
-                      <m.icon className="w-4 h-4" />
-                      <span className="truncate w-full text-center">{m.id}</span>
-                    </button>
-                  ))}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('UPI')}
+                    className={`p-2.5 rounded-xl border text-[11px] font-bold flex items-center space-x-2 transition-all ${
+                      paymentMethod === 'UPI'
+                        ? 'bg-[#5f259f] text-white border-[#5f259f] shadow-sm'
+                        : 'bg-white text-charcoal-700 border-cream-200 hover:border-purple-300'
+                    }`}
+                  >
+                    <Smartphone className="w-4 h-4 text-purple-200 flex-shrink-0" />
+                    <div className="text-left leading-tight">
+                      <div className="font-extrabold">PhonePe UPI</div>
+                      <div className="text-[9px] opacity-80">GPay, PhonePe, QR</div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('CASH')}
+                    className={`p-2.5 rounded-xl border text-[11px] font-bold flex items-center space-x-2 transition-all ${
+                      paymentMethod === 'CASH'
+                        ? 'bg-maroon-800 text-white border-maroon-800 shadow-sm'
+                        : 'bg-white text-charcoal-700 border-cream-200 hover:border-gold-400'
+                    }`}
+                  >
+                    <Banknote className="w-4 h-4 text-gold-300 flex-shrink-0" />
+                    <div className="text-left leading-tight">
+                      <div className="font-extrabold">Pay at Counter</div>
+                      <div className="text-[9px] opacity-80">Cash upon pickup</div>
+                    </div>
+                  </button>
                 </div>
               </div>
 
@@ -412,8 +558,9 @@ export const CartDrawer: React.FC = () => {
               </div>
 
               {errorMsg && (
-                <div className="p-2.5 bg-red-50 text-red-700 border border-red-200 rounded-xl text-xs font-medium">
-                  {errorMsg}
+                <div className="p-2.5 bg-red-50 text-red-700 border border-red-200 rounded-xl text-xs font-medium flex items-center space-x-1.5">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  <span>{errorMsg}</span>
                 </div>
               )}
 
@@ -422,9 +569,19 @@ export const CartDrawer: React.FC = () => {
                 type="button"
                 disabled={isSubmitting}
                 onClick={handleCheckout}
-                className="w-full py-3.5 px-4 bg-gradient-to-r from-maroon-800 to-maroon-950 hover:from-maroon-900 hover:to-black text-white font-extrabold text-sm rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-between active:scale-98 disabled:opacity-50"
+                className={`w-full py-3.5 px-4 font-extrabold text-sm rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-between active:scale-98 disabled:opacity-50 text-white ${
+                  paymentMethod === 'UPI'
+                    ? 'bg-[#5f259f] hover:bg-[#4d1d82]'
+                    : 'bg-gradient-to-r from-maroon-800 to-maroon-950 hover:from-maroon-900 hover:to-black'
+                }`}
               >
-                <span>{isSubmitting ? 'Processing Order...' : 'Place Direct Order'}</span>
+                <span>
+                  {isSubmitting 
+                    ? 'Connecting to PhonePe Gateway...' 
+                    : paymentMethod === 'UPI' 
+                    ? `Pay ₹${totalAmount} via PhonePe UPI` 
+                    : 'Place Direct Takeaway Order'}
+                </span>
                 <div className="flex items-center space-x-1">
                   <span>₹{totalAmount}</span>
                   <ArrowRight className="w-4 h-4 ml-1" />
@@ -434,6 +591,158 @@ export const CartDrawer: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* PhonePe UPI Payment Modal */}
+      {isPhonePeModalOpen && phonePeSession && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl border border-purple-200 animate-in zoom-in-95 duration-200">
+            {/* PhonePe Header */}
+            <div className="bg-[#5f259f] text-white p-5 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center font-bold text-[#5f259f] text-xl shadow-xs">
+                  पे
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base tracking-wide flex items-center gap-1.5">
+                    PhonePe Gateway
+                    <ShieldCheck className="w-4 h-4 text-emerald-300" />
+                  </h3>
+                  <p className="text-[10px] text-purple-200">Official UPI Standard Checkout</p>
+                </div>
+              </div>
+
+              <div className="text-right">
+                <span className="text-[10px] text-purple-200 uppercase font-semibold block">Expires in</span>
+                <span className="font-mono font-bold text-xs bg-purple-900/60 px-2 py-0.5 rounded text-gold-300">
+                  {formatCountdown(phonePeTimeLeft)}
+                </span>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 text-center space-y-4">
+              {phonePeStatus === 'WAITING' && (
+                <>
+                  <div className="space-y-1">
+                    <span className="text-xs text-charcoal-500 font-semibold">Payable to Hyderabad House</span>
+                    <div className="text-3xl font-black text-[#5f259f]">
+                      ₹{phonePeSession.amount}
+                    </div>
+                    <p className="text-[11px] text-charcoal-400">
+                      Ref: <span className="font-mono">{phonePeSession.merchantTransactionId}</span>
+                    </p>
+                  </div>
+
+                  {/* QR Code Graphic */}
+                  <div className="p-4 bg-cream-50 rounded-2xl border border-purple-100 inline-block shadow-inner">
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(phonePeSession.qrString || phonePeSession.redirectUrl)}`} 
+                      alt="PhonePe UPI QR Code"
+                      className="w-44 h-44 rounded-xl mx-auto shadow-xs border border-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-charcoal-800 flex items-center justify-center gap-1.5">
+                      <QrCode className="w-4 h-4 text-[#5f259f]" />
+                      Scan with PhonePe, Google Pay, Paytm, or BHIM
+                    </p>
+                    <p className="text-[11px] text-charcoal-500">
+                      Waiting for bank confirmation... Live updating
+                    </p>
+                  </div>
+
+                  {/* Testing sandbox buttons */}
+                  <div className="pt-2 border-t border-cream-200 space-y-2">
+                    <div className="bg-purple-50 p-2 rounded-xl text-[10px] text-purple-900 border border-purple-200">
+                      <strong>UAT Testing Sandbox:</strong> You can simulate payment completion or open the mock gateway.
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        disabled={isSimulating}
+                        onClick={() => handleSimulatePayment('SUCCESS')}
+                        className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs flex items-center justify-center space-x-1"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Simulate Success</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isSimulating}
+                        onClick={() => handleSimulatePayment('FAIL')}
+                        className="py-2.5 px-3 bg-red-100 hover:bg-red-200 text-red-700 rounded-xl font-bold text-xs"
+                      >
+                        Simulate Fail
+                      </button>
+                    </div>
+
+                    <a
+                      href={phonePeSession.redirectUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center space-x-1 text-xs text-[#5f259f] font-bold hover:underline pt-1"
+                    >
+                      <span>Open PhonePe Sandbox Browser Page</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                </>
+              )}
+
+              {phonePeStatus === 'SUCCESS' && (
+                <div className="py-8 space-y-3">
+                  <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto animate-bounce">
+                    <CheckCircle2 className="w-10 h-10" />
+                  </div>
+                  <h3 className="font-serif font-black text-xl text-maroon-950">Payment Successful!</h3>
+                  <p className="text-xs text-charcoal-600 font-medium">
+                    Transaction verified by PhonePe. Routing order to outlet kitchen...
+                  </p>
+                </div>
+              )}
+
+              {phonePeStatus === 'FAILED' && (
+                <div className="py-6 space-y-3">
+                  <div className="w-14 h-14 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+                    <AlertTriangle className="w-8 h-8" />
+                  </div>
+                  <h3 className="font-serif font-bold text-base text-red-950">Payment Failed or Cancelled</h3>
+                  <p className="text-xs text-charcoal-500">
+                    Your account was not debited. Cart items remain saved for your next attempt.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsPhonePeModalOpen(false);
+                      setPhonePeSession(null);
+                    }}
+                    className="w-full py-2.5 bg-charcoal-900 text-white rounded-xl font-bold text-xs"
+                  >
+                    Return to Cart
+                  </button>
+                </div>
+              )}
+
+              {phonePeStatus === 'WAITING' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPhonePeModalOpen(false);
+                    setPhonePeSession(null);
+                    setErrorMsg('Payment cancelled. Your cart items are preserved.');
+                  }}
+                  className="w-full py-2 text-xs text-charcoal-400 hover:text-charcoal-700 font-medium"
+                >
+                  Cancel and choose another method
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

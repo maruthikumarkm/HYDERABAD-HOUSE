@@ -111,6 +111,14 @@ export const CateringDashboard: React.FC = () => {
           <div className="w-8 h-8 border-4 border-maroon-800 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
           <p className="text-xs font-medium">Loading catering requests...</p>
         </div>
+      ) : partyOrders.length === 0 ? (
+        <div className="py-20 text-center text-charcoal-500 bg-white rounded-3xl border border-cream-200 p-8 space-y-3">
+          <Calendar className="w-12 h-12 text-cream-300 mx-auto" />
+          <h3 className="font-serif font-bold text-base text-charcoal-800">No catering inquiries yet</h3>
+          <p className="text-xs text-charcoal-400">
+            When customers submit banquet or bulk feast requests from the Party Orders portal, they will appear here for date confirmation and kitchen routing.
+          </p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {partyOrders.map((po) => (
