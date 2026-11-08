@@ -1,8 +1,7 @@
 -- Hyderabad House Restaurant Direct Ordering Platform Schema
 -- MySQL 8.0+
 
-CREATE DATABASE IF NOT EXISTS hyderabad_house CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE hyderabad_house;
+USE railway;
 
 SET FOREIGN_KEY_CHECKS = 0;
 

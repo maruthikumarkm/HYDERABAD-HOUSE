@@ -1,5 +1,4 @@
-USE hyderabad_house;
-
+USE railway;
 -- 1. ROLES
 INSERT INTO roles (id, name, description) VALUES
 (1, 'CUSTOMER', 'Direct ordering customer with loyalty and tracking'),
