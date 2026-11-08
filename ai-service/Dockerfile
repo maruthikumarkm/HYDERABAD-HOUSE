@@ -6,7 +6,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
-COPY models ./models
+COPY training ./training
+
+# Train the model using the same environment used by the API
+RUN python training/train_model.py
 
 EXPOSE 8000
 

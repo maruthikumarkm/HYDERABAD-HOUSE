@@ -112,7 +112,12 @@ print(f"Model trained successfully!")
 print(f"Test MAE: {mae:.2f} minutes")
 print(f"Test R²: {r2:.2f}")
 
-os.makedirs("/Users/maruthikumar/Desktop/HYDERABAD HOUSE/ai-service/models", exist_ok=True)
-model_path = "/Users/maruthikumar/Desktop/HYDERABAD HOUSE/ai-service/models/prep_time_model.joblib"
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+models_dir = os.path.join(base_dir, "models")
+
+os.makedirs(models_dir, exist_ok=True)
+
+model_path = os.path.join(models_dir, "prep_time_model.joblib")
 joblib.dump(model, model_path)
+
 print(f"Model saved to: {model_path}")
