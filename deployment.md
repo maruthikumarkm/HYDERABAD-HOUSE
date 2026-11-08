@@ -188,9 +188,9 @@ Before deployment:
 After deployment, record the public URLs:
 
 ```text
-Frontend URL: <YOUR_DEPLOYED_FRONTEND_URL>
-Backend URL: <YOUR_DEPLOYED_BACKEND_URL>
-AI Service URL: <YOUR_DEPLOYED_AI_SERVICE_URL>
+Frontend URL: https://hyderabad-house-five.vercel.app
+Backend URL: https://hyderabad-house.onrender.com
+AI Service URL: https://hyderabad-house-ai.onrender.com
 ```
 
 If a service is not publicly exposed, document how the other deployed services access it.
