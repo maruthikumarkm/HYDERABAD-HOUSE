@@ -1,0 +1,8 @@
+{
+    "rewrites": [
+        {
+            "source": "/api/(.*)",
+            "destination": "https://hyderabad-house.onrender.com/api/$1"
+        }
+    ]
+}
