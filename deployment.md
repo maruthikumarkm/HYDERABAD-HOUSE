@@ -44,7 +44,7 @@ mysql --version
 Clone the GitHub repository:
 
 ```bash
-git clone <YOUR_GITHUB_REPOSITORY_URL>
+git clone https://github.com/maruthikumarkm/HYDERABAD-HOUSE
 cd HYDERABAD-HOUSE
 ```
 
